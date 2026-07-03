@@ -235,7 +235,7 @@ change(async (db) => {
 	);
 
 	await db.createTable(
-		"teams_app", 
+		"teams_app",
 		(t) => ({
 			id: t.string(26).primaryKey(),
 			name: t.string(),
@@ -260,7 +260,7 @@ change(async (db) => {
 				name: "teams_app_personal_team_for_user_id_idx",
 				where: "deleted_at IS NULL AND personal_team_for_user_id IS NOT NULL",
 			}),
-		]
+		],
 	);
 
 	await db.changeTable("users", (t) => ({

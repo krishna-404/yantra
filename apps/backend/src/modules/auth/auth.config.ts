@@ -22,9 +22,7 @@ import { orchidAdapter } from "./orchid-adapter/factory.orchid_adapter";
 const APPLE_SECRET_TTL_MS = 60 * 60 * 1000; // must stay <= JWT expiry in apple.lib.ts
 const APPLE_SECRET_REFRESH_MARGIN_MS = 60 * 1000;
 
-let appleClientSecretCache:
-	| { secret: string; expiresAt: number }
-	| undefined;
+let appleClientSecretCache: { secret: string; expiresAt: number } | undefined;
 let appleClientSecretInflight: Promise<string | undefined> | undefined;
 
 async function getAppleClientSecret(): Promise<string | undefined> {

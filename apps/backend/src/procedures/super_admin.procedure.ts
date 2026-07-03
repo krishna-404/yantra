@@ -22,7 +22,10 @@ const parseList = (
 };
 
 const superAdminEmails = parseList(env.SUPER_ADMIN_EMAILS);
-const superAdminPhones = parseList(env.SUPER_ADMIN_PHONE_NUMBERS, normalizePhone);
+const superAdminPhones = parseList(
+	env.SUPER_ADMIN_PHONE_NUMBERS,
+	normalizePhone,
+);
 
 /**
  * Super-admin gate. Allows access only when the authenticated user's email

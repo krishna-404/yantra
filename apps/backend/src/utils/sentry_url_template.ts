@@ -9,7 +9,8 @@
  * `settings`, etc.) stay intact.
  */
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DIGITS_RE = /^\d{6,}$/;
 
 export function normalizeUrlPath(path: string): string {
