@@ -1,5 +1,10 @@
 # Seed backlog (Y0.7) — ready-to-file issue bodies
 
+> **FILED 2026-07-04:** all 23 were created on `krishna-404/yantra` as issues **#1–#23**
+> (numbering contract held — do NOT re-file). These files remain as the canonical
+> source text. Nothing is labeled `spec:ready` yet; that happens for #1 only, at the
+> Y0.8 smoke-test moment.
+
 One file per issue from `docs/yantra/06-seed-backlog.md`. Format: first line
 `TITLE: …`, everything after the `---` separator is the issue body, written in the
 same `### field` layout the Product Spec issue form produces (so the harness's
