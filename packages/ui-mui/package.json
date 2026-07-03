@@ -59,7 +59,7 @@
 			"types": "./src/theme/*.tsx"
 		}
 	},
-	"license": "AGPL-3.0-only",
+	"license": "UNLICENSED",
 	"name": "@connected-repo/ui-mui",
 	"peerDependencies": {
 		"@emotion/react": "^11.14.0",

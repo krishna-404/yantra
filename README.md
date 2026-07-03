@@ -1,6 +1,10 @@
-# Full-Stack TypeScript Monorepo
+# Yantra
 
-Production-ready Turborepo monorepo for building full-stack TypeScript applications with end-to-end type safety.
+**Yantra** (यन्त्र) is a self-hosted autonomous code factory: a loop that plans, builds, verifies, and ships — starting with this repo itself as its first project (tenant-zero).
+Every unit of work runs the same four-role cycle — advise → execute → grade → dream — with GitHub Issues as intake, CI + a model-graded rubric as the gate, and hard auto-merge rails.
+The codebase underneath is a full-stack TypeScript monorepo (the factory's substrate and its first workload).
+Master spec: [docs/yantra/00-overview.md](./docs/yantra/00-overview.md) · the machine: [docs/yantra/loop-protocol.md](./docs/yantra/loop-protocol.md).
+Status: Phase 0 bootstrap. Private; all rights reserved (final license = open decision OD-1).
 
 > [!NOTE]
 > This project follows a **Bimodal Documentation System**.
@@ -15,7 +19,7 @@ Production-ready Turborepo monorepo for building full-stack TypeScript applicati
 - **Database**: PostgreSQL with [Orchid ORM](https://orchid-orm.netlify.app/)
 - **Task Queue**: [pg-tbus](https://github.com/hextech-dev/pg-tbus) (PostgreSQL-based event bus)
 - **Authentication**: Better Auth (Google OAuth)
-- **Notifications**: SuprSend
+- **Notifications**: Novu (`apps/backend/src/novu/`)
 - **Observability**: OpenTelemetry, Sentry
 - **Security**: Helmet, CORS, Rate Limiting, API key auth
 
@@ -77,8 +81,8 @@ Production-ready Turborepo monorepo for building full-stack TypeScript applicati
 
 1. Clone the repository:
 ```bash
-git clone git@github.com:shipmyapp/connected-repo.git
-cd connected-repo
+git clone git@github.com:krishna-404/yantra.git
+cd yantra
 ```
 
 2. Set up environment variables:
@@ -342,4 +346,4 @@ Shared Zod schemas in `packages/zod-schemas/`:
 
 ## License
 
-[AGPL-3.0](./LICENSE) - Copyright (c) 2025 Hexatech Hub Solutions LLP, India
+All rights reserved — see [LICENSE](./LICENSE). Final license is open decision OD-1 (docs/yantra/00-overview.md §1).

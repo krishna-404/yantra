@@ -48,7 +48,7 @@
 		"vite": "^7.3.1",
 		"vite-bundle-analyzer": "^1.3.6"
 	},
-	"license": "AGPL-3.0-only",
+	"license": "UNLICENSED",
 	"name": "@connected-repo/frontend",
 	"private": true,
 	"repository": "git@github.com:shipmyapp/connected-repo.git",
