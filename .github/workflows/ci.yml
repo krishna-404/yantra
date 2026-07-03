@@ -25,6 +25,8 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --frozen-lockfile
+      # Vite validates import.meta.env at build time; the example values are valid.
+      - run: cp apps/frontend/.env.example apps/frontend/.env
       - run: yarn build
       - run: yarn lint
       - run: yarn check-types
