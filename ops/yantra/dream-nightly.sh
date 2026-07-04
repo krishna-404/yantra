@@ -38,14 +38,22 @@ docker run --rm -i \
 	-e "MODEL=$MODEL" -e "BASE_BRANCH=$BASE_BRANCH" \
 	"$YANTRA_EXEC_IMAGE" bash -s <<'BOOTSTRAP'
 set -euo pipefail
+# Work runs as the unprivileged `node` user — claude-code refuses
+# --dangerously-skip-permissions under root.
+mkdir -p /workspace
+echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
+cat > /workspace/work.sh <<'WORK'
+set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
-mkdir -p /workspace && cd /workspace
+cd /workspace
 git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
 cd repo
-echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
 claude -p "$(cat /workspace/prompt.md)" --model "$MODEL" --dangerously-skip-permissions
+WORK
+chown -R node:node /workspace
+su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
 BOOTSTRAP
 rc=$?
 set -e
