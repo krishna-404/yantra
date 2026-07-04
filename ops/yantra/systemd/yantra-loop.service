@@ -10,6 +10,7 @@ Type=oneshot
 # per-run execute/grade containers as siblings via the mounted docker socket.
 # The fixed --name doubles as an overlap guard: if the previous tick is still
 # running, this start fails and the timer just tries again in 10 minutes.
+ExecStartPre=-/usr/bin/git -C /opt/yantra/repo pull --ff-only
 ExecStart=/usr/bin/docker run --rm --name yantra-tick \
 	--memory=1g --cpus=1 \
 	-v /var/run/docker.sock:/var/run/docker.sock \

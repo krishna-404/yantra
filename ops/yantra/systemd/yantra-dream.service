@@ -8,6 +8,7 @@ Requires=docker.service
 Type=oneshot
 # D21: containerized like the tick; spawns its own claude run-container as a
 # sibling via the mounted docker socket.
+ExecStartPre=-/usr/bin/git -C /opt/yantra/repo pull --ff-only
 ExecStart=/usr/bin/docker run --rm --name yantra-dream \
 	--memory=1g --cpus=1 \
 	-v /var/run/docker.sock:/var/run/docker.sock \
