@@ -30,7 +30,7 @@ Status: Phase 0 bootstrap. Private; all rights reserved (final license = open de
 - **UI**: Material-UI (via `@connected-repo/ui-mui`)
 - **PWA**: Vite PWA plugin with offline support
 - **Offline Storage**: Dexie.js (IndexedDB wrapper)
-- **Sync**: SSE-based delta sync with real-time updates
+- **Sync**: Offline-first delta sync via FCM silent push + service worker (see `apps/backend/src/modules/sync/`)
 - **Workers**: Two-worker architecture (DataWorker + MediaWorker)
 - **Testing**: Playwright (E2E)
 
@@ -157,6 +157,14 @@ There is deliberately no bare `test:e2e` — pick your intent explicitly. `:with
 is what you want on a fresh clone, after switching branches, or any time the
 frontend `dist/` might have been built in the wrong mode. `:no-build` is the
 fast-iterate path once a test-mode build is in place.
+
+### CI
+
+`.github/workflows/ci.yml` (added Y0.4) runs two jobs on every PR and push to `main`/`staging`:
+- **checks**: `yarn build`, `yarn lint`, `yarn check-types`
+- **tests**: Postgres 16 service container + `yarn test:run` (Vitest)
+
+Playwright E2E, coverage gates, and knip are not wired into CI yet (Phase 1 / Y1.A).
 
 ## Key Features
 
