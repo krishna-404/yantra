@@ -59,6 +59,23 @@ the module's own `AGENTS.md` and match the surrounding code.
   to get green — if a test looks wrong, stop and flag it for a human.
 - Gate before finishing: `yarn lint && yarn check-types && yarn test:run` must be green.
 
+## Environment gates vs. regressions
+
+- A fresh checkout can show `yarn check-types` / `yarn test:run` red for reasons that
+  have nothing to do with the diff. In `turbo.json`, `check-types` depends on
+  `^check-types` (not `^build`) and `test:run` has no `dependsOn` at all — so a
+  container that hasn't built packages yet, or has no test DB, gets false-red gates:
+  - `check-types` fails with `Cannot find module '@zod-schemas/...'` until
+    `packages/zod-schemas` has been built at least once (`yarn build`, or scoped:
+    `yarn build --filter=@connected-repo/zod-schemas`).
+  - `test:run` fails with `database "connected_repo_orpc_db_test" does not exist` until
+    the test DB is provisioned: `cd apps/backend && yarn test:db:setup` (drop → create
+    → migrate → seed).
+- Before treating a red gate as caused by your change, reproduce it on the unmodified
+  base commit (`git stash -u`, or a clean checkout). Identical failure on the clean tree
+  means it's a bootstrap gap, not a regression — bootstrap the container, don't chase it
+  by editing unrelated code.
+
 ## Migration rules
 
 - **Auto-gen is mandatory**: `yarn db g <name>` — never hand-write migration files.
