@@ -57,7 +57,7 @@ if [[ -n "$merge_sha" ]]; then
 		source "$YANTRA_OPS_DIR/grade.sh" --lib-only
 		pj=$(gh pr view "$revert_pr" --repo "$REPO" --json additions,deletions,changedFiles,files)
 		if rail_msg=$(rails_check "$pj" "T0" "PASS" --revert); then
-			gh pr merge "$revert_pr" --repo "$REPO" --squash --auto
+			gh pr merge "$revert_pr" --repo "$REPO" --squash
 			log INFO "canary: revert PR #$revert_pr auto-merge enabled"
 		else
 			log ERROR "canary: rails refused revert PR #$revert_pr: $rail_msg — leaving for human"

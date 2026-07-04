@@ -151,7 +151,7 @@ $(jq . <<<"$verdict_json")
 			local rail_fail=""
 			rail_fail=$(rails_check "$pjson" "$tier_confirmed" "$verdict") || true
 			if [[ -z "$rail_fail" ]]; then
-				gh pr merge "$pr" --repo "$REPO" --squash --auto
+				gh pr merge "$pr" --repo "$REPO" --squash
 				record_automerge "$pr" "$sha"
 				log INFO "grade PASS pr=#$pr T0 — auto-merge enabled run=$run"
 				local outcome=grade_pass_first_try
