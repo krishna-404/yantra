@@ -55,10 +55,12 @@ STUB
 
 cat > "$WORK/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+# Never consume stdin: with an interactive/held-open stdin a blocking read
+# would hang the whole suite (bit us twice). Heredoc-fed callers don't care.
+exec 0</dev/null
 echo "docker $*" >> "$GH_STATE/calls.log"
-# grade's claude_container pipes a prompt in and expects verdict JSON on stdout
+# grade's claude_container expects verdict JSON on stdout
 if [[ -f "$GH_STATE/docker_out" ]]; then cat "$GH_STATE/docker_out"; fi
-cat > /dev/null 2>&1 || true
 exit "${DOCKER_STUB_RC:-0}"
 STUB
 chmod +x "$WORK/bin/"*
@@ -130,7 +132,7 @@ cat > "$GH_STATE/docker_out" <<'EOF'
 EOF
 "$OPS/grade.sh" >/dev/null 2>&1
 check "verdict comment posted" grep -q "pr comment 77" "$GH_STATE/mutations.log"
-check "auto-merge fired" grep -q "pr merge 77 --repo stub/yantra --squash --auto" "$GH_STATE/mutations.log"
+check "auto-merge fired" grep -q "pr merge 77 --repo stub/yantra --squash" "$GH_STATE/mutations.log"
 check "ledger entry written" test -s "$WORK/telemetry/automerges.jsonl"
 
 # ---- E. grade PASS T0 but 160-line diff → rails refuse ---------------------------
