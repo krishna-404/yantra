@@ -97,16 +97,19 @@ grade_one() {
 		return 0
 	fi
 
-	# CI leg via gh pr checks buckets — skip while pending; red counts as a failed attempt.
+	# CI leg via the Actions REST API — the fine-grained PAT lacks Checks:Read
+	# (which gh pr checks / statusCheckRollup require), but Actions:Read is granted
+	# and sufficient (canary's gh run list proves it every tick).
 	local checks ci_state
-	checks=$(gh pr checks "$pr" --repo "$REPO" --json name,bucket,link 2>/dev/null || true)
+	checks=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=20" \
+		--jq '[.workflow_runs[] | {name, status, conclusion, url: .html_url}]' 2>/dev/null || true)
 	if [[ -z "$checks" ]] || ! jq -e 'length > 0' <<<"$checks" >/dev/null 2>&1; then
-		log INFO "grade skip pr=#$pr: no CI checks reported yet"; return 0
+		log INFO "grade skip pr=#$pr: no CI runs for sha $sha yet"; return 0
 	fi
-	ci_state=$(jq -r '[.[].bucket] as $b
-		| if ($b | map(select(. == "fail" or . == "cancel")) | length) > 0 then "FAILURE"
-		  elif ($b | map(select(. == "pass" or . == "skipping")) | length) == ($b | length) then "SUCCESS"
-		  else "PENDING" end' <<<"$checks")
+	ci_state=$(jq -r 'if ([.[] | select(.status != "completed")] | length) > 0 then "PENDING"
+		elif ([.[] | select(.conclusion == "failure" or .conclusion == "cancelled"
+			or .conclusion == "timed_out" or .conclusion == "startup_failure")] | length) > 0 then "FAILURE"
+		else "SUCCESS" end' <<<"$checks")
 	if [[ "$ci_state" == "PENDING" ]]; then log INFO "grade skip pr=#$pr: CI pending"; return 0; fi
 
 	# Already graded this SHA?
