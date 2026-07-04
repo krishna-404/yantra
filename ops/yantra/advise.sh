@@ -64,6 +64,7 @@ case "$verdict" in
 		;;
 	AMBIGUOUS|REJECT)
 		gh issue edit "$ISSUE" --repo "$REPO" --add-label "needs-human" --remove-label "agent:working"
+		gh issue comment "$ISSUE" --repo "$REPO" --body "🤖 yantra release run=$RUN — parked ($verdict), claim released."
 		"$YANTRA_OPS_DIR/notify.sh" needs-human \
 			"$(jq -cn --argjson i "$ISSUE" --arg v "$verdict" '{issue:$i, reason:("advise " + $v)}')"
 		log INFO "advise $verdict issue=#$ISSUE parked needs-human run=$RUN"
