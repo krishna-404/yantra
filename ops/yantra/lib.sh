@@ -143,5 +143,5 @@ claude_container() { # claude_container <model> <prompt-file> — read-only reas
 		-e "PROMPT_B64=$(base64 -w0 "$2")" \
 		-e "MODEL=$1" \
 		"$YANTRA_EXEC_IMAGE" \
-		bash -c 'echo "$PROMPT_B64" | base64 -d > /tmp/p.md && claude -p "$(cat /tmp/p.md)" --model "$MODEL" --dangerously-skip-permissions'
+		bash -c 'echo "$PROMPT_B64" | base64 -d > /tmp/p.md && claude -p "$(cat /tmp/p.md)" --model "$MODEL"'
 }

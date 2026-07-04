@@ -59,10 +59,19 @@ run_container() {
 		-e "IS_RETRY=$([[ -n "$RETRY_PR" ]] && echo 1 || echo 0)" \
 		"$YANTRA_EXEC_IMAGE" bash -s <<'BOOTSTRAP'
 set -euo pipefail
+# Root does only privileged prep: postgres for the self-check suite, workspace
+# ownership. The actual work runs as the unprivileged `node` user — claude-code
+# refuses --dangerously-skip-permissions under root.
+pg_ctlcluster "$(ls /etc/postgresql | head -1)" main start
+su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres';\""
+mkdir -p /workspace
+echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
+cat > /workspace/work.sh <<'WORK'
+set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
-mkdir -p /workspace && cd /workspace
+cd /workspace
 git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
 cd repo
 if [[ "$IS_RETRY" == "1" ]]; then
@@ -70,11 +79,6 @@ if [[ "$IS_RETRY" == "1" ]]; then
 else
 	git checkout --quiet -b "$BRANCH" "origin/$BASE_BRANCH"
 fi
-echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
-
-# local postgres for the self-check suite (matches apps/backend/.env.test)
-pg_ctlcluster "$(ls /etc/postgresql | head -1)" main start
-su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres';\""
 
 yarn install --frozen-lockfile >/workspace/selfcheck.log 2>&1
 
@@ -108,6 +112,10 @@ if [[ "$IS_RETRY" == "0" ]]; then
 	gh pr create --repo "$YANTRA_REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
 		--title "[Yantra][$TIER] $TITLE" --body-file /workspace/final-body.md
 fi
+WORK
+chown -R node:node /workspace
+# su -p preserves the injected env (GH_TOKEN, MODEL, BRANCH…); HOME must be node's own.
+su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
 BOOTSTRAP
 }
 
