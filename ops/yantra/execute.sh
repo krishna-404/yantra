@@ -68,6 +68,12 @@ mkdir -p /workspace
 echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
 cat > /workspace/work.sh <<'WORK'
 set -euo pipefail
+# The env-file injects orchestrator-only secrets into every run container. The
+# self-check suite must never see them: a leaked NOVU_SECRET_KEY (absent from
+# .env.test, so dotenv can't override it) made notification tests call the REAL
+# Novu API during PR #34's self-check. Execute needs only GH_TOKEN + the Claude
+# token — strip the rest.
+unset NOVU_SECRET_KEY NOVU_API_URL
 export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
