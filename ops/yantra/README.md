@@ -8,7 +8,14 @@ Retired in Phase 2 when `apps/yantra` passes the parity suite. Everything here i
 
 The integration branch is `staging` (`YANTRA_BASE_BRANCH`, set in the env file):
 execute branches from it, PRs target it, canary watches its CI, branch protection
-+ required checks apply to it.
++ required checks apply to it. `main` is production (Dokploy); humans promote
+staging → main when it's proven green.
+
+**Zero host-side runtime (D21):** the systemd units run the tick/dream inside the
+`yantra-exec` image (docker socket mounted, repo read-only, env read-only,
+telemetry writable); those orchestrators spawn the per-run execute/grade/dream
+containers as siblings. The host runs only systemd + docker; a runaway run can
+exhaust its own container's 4 GB/2 CPU cap, never the base server.
 
 ```bash
 # one-time (after Y0.5's dirs/env/creds exist) — or just run vps-bootstrap.sh

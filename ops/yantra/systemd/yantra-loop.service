@@ -1,13 +1,23 @@
 [Unit]
-Description=Yantra loop v0 — one tick (claim/advise/execute/grade/dream)
+Description=Yantra loop v0 — one containerized tick (claim/advise/execute/grade/dream)
 After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
 Type=oneshot
-Environment=YANTRA_HOME=/opt/yantra
-Environment=YANTRA_ENV_FILE=/opt/yantra/env/yantra.env
-ExecStart=/opt/yantra/repo/ops/yantra/loop-tick.sh
-# The tick exits 0 by contract; a hung tick is killed before the next timer fire.
+# D21: nothing runs on the host — the tick itself is a container. It spawns the
+# per-run execute/grade containers as siblings via the mounted docker socket.
+# The fixed --name doubles as an overlap guard: if the previous tick is still
+# running, this start fails and the timer just tries again in 10 minutes.
+ExecStart=/usr/bin/docker run --rm --name yantra-tick \
+	--memory=1g --cpus=1 \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v /opt/yantra/repo:/opt/yantra/repo:ro \
+	-v /opt/yantra/telemetry:/opt/yantra/telemetry \
+	-v /opt/yantra/env:/opt/yantra/env:ro \
+	yantra-exec:0 /opt/yantra/repo/ops/yantra/loop-tick.sh
+# If systemd times the tick out, make sure the container dies with it.
+ExecStopPost=-/usr/bin/docker rm -f yantra-tick
 TimeoutStartSec=9min
 User=root

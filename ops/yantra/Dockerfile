@@ -17,6 +17,17 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends gh postgresql \
 	&& rm -rf /var/lib/apt/lists/*
 
+# docker CLI (client only, no daemon) — the tick orchestrator runs inside this
+# image too (D21: zero host-side runtime) and spawns sibling run-containers
+# through the host's mounted docker socket.
+RUN mkdir -p /etc/apt/keyrings \
+	&& curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+	&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+		> /etc/apt/sources.list.d/docker.list \
+	&& apt-get update \
+	&& apt-get install -y --no-install-recommends docker-ce-cli \
+	&& rm -rf /var/lib/apt/lists/*
+
 # Claude Code — major-version pin; tighten to an exact version after the first
 # successful VPS build (prompt/harness changes are T3 either way).
 ARG CLAUDE_CODE_VERSION=2

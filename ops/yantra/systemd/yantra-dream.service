@@ -1,12 +1,20 @@
 [Unit]
-Description=Yantra nightly dream consolidation (loop-protocol §2.5)
+Description=Yantra nightly dream consolidation (containerized, loop-protocol §2.5)
 After=network-online.target docker.service
 Wants=network-online.target
+Requires=docker.service
 
 [Service]
 Type=oneshot
-Environment=YANTRA_HOME=/opt/yantra
-Environment=YANTRA_ENV_FILE=/opt/yantra/env/yantra.env
-ExecStart=/opt/yantra/repo/ops/yantra/dream-nightly.sh
+# D21: containerized like the tick; spawns its own claude run-container as a
+# sibling via the mounted docker socket.
+ExecStart=/usr/bin/docker run --rm --name yantra-dream \
+	--memory=1g --cpus=1 \
+	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v /opt/yantra/repo:/opt/yantra/repo:ro \
+	-v /opt/yantra/telemetry:/opt/yantra/telemetry \
+	-v /opt/yantra/env:/opt/yantra/env:ro \
+	yantra-exec:0 /opt/yantra/repo/ops/yantra/dream-nightly.sh
+ExecStopPost=-/usr/bin/docker rm -f yantra-dream
 TimeoutStartSec=45min
 User=root

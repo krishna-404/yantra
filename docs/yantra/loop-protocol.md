@@ -1,9 +1,16 @@
 # Yantra Loop Protocol (v0/v1)
 
-> **Deployment note (2026-07-04):** the integration branch is configurable via
-> `YANTRA_BASE_BRANCH` (v0 default: `staging` — we always work on staging). Every
-> mention of `main` below (clone base, PR target, canary branch, branch protection)
-> reads as that base branch.
+> **Deployment notes (2026-07-04):**
+> **(D20)** The integration branch is configurable via `YANTRA_BASE_BRANCH` (v0
+> default: `staging` — we always work on staging). Every mention of `main` below
+> (clone base, PR target, canary branch, branch protection) reads as that base
+> branch. `main` is the production branch Dokploy deploys; it moves only when a
+> human promotes a green staging.
+> **(D21)** Zero host-side runtime: the tick and dream orchestrators run inside
+> the `yantra-exec` image (systemd `docker run`, socket-mounted, repo mounted
+> read-only), spawning per-run containers as siblings. The VPS host runs only
+> systemd + docker. §2.2's "on host" for advise reads as "inside the orchestrator
+> container".
 
 The exact machine. Loop v0 (Phase 0) implements this in scripts; the `apps/yantra`
 harness (Phase 2) implements the same protocol and must pass the parity suite (§8).
