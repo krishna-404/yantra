@@ -17,11 +17,11 @@
 	"engines": {
 		"node": ">=22"
 	},
-	"license": "AGPL-3.0-only",
-	"name": "connected-repo",
+	"license": "UNLICENSED",
+	"name": "yantra",
 	"packageManager": "yarn@1.22.22",
 	"private": true,
-	"repository": "git@github.com:shipmyapp/connected-repo.git",
+	"repository": "git@github.com:krishna-404/yantra.git",
 	"scripts": {
 		"build": "npx turbo run build",
 		"check-types": "turbo run check-types",

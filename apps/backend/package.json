@@ -52,7 +52,7 @@
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.18"
 	},
-	"license": "AGPL-3.0-only",
+	"license": "UNLICENSED",
 	"main": "src/server.ts",
 	"name": "@connected-repo/backend",
 	"private": true,

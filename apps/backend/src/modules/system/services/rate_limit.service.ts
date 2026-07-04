@@ -39,7 +39,8 @@ const logExhaustionOncePerMinute = (
 	// distinct hot keys over time. O(n) but only runs when we would have logged.
 	if (exhaustionLastLoggedAt.size > 1000) {
 		for (const [k, t] of exhaustionLastLoggedAt) {
-			if (now - t >= EXHAUSTION_LOG_DEBOUNCE_MS) exhaustionLastLoggedAt.delete(k);
+			if (now - t >= EXHAUSTION_LOG_DEBOUNCE_MS)
+				exhaustionLastLoggedAt.delete(k);
 		}
 	}
 
@@ -133,7 +134,10 @@ export const checkAndRecordRateLimit = async (
 		};
 	}
 
-	logger.warn({ key, limit, windowSeconds, retries: MAX_RETRIES }, "[rateLimit] optimistic lock exhausted — shedding as rate-limited");
+	logger.warn(
+		{ key, limit, windowSeconds, retries: MAX_RETRIES },
+		"[rateLimit] optimistic lock exhausted — shedding as rate-limited",
+	);
 	logExhaustionOncePerMinute(key, limit, windowSeconds, MAX_RETRIES);
 	return { allowed: false, currentCount: limit, limit, retryAfterSeconds: 1 };
 };

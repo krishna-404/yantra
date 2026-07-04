@@ -130,10 +130,7 @@ function areSameSubnet(ip1: string, ip2: string): boolean {
 			const p2 = ip2.split(":");
 			if (p1.length < 4 || p2.length < 4) return false;
 			return (
-				p1[0] === p2[0] &&
-				p1[1] === p2[1] &&
-				p1[2] === p2[2] &&
-				p1[3] === p2[3]
+				p1[0] === p2[0] && p1[1] === p2[1] && p1[2] === p2[2] && p1[3] === p2[3]
 			);
 		}
 

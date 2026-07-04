@@ -232,7 +232,11 @@ export const handleServerClose = (server: Server) => {
 		// message/stack instead of stripping to just `code`. Keep `reason`
 		// as an extra key for anyone piping raw JSON.
 		logger.error(
-			{ err: reason instanceof Error ? reason : new Error(String(reason)), reason, promise },
+			{
+				err: reason instanceof Error ? reason : new Error(String(reason)),
+				reason,
+				promise,
+			},
 			"Unhandled rejection",
 		);
 		forceShutdown();
