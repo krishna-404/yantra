@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Yantra EXECUTE (loop-protocol §2.3) — one containerized build run, one PR.
 # Usage:
-#   execute.sh <issue> <turn> <tier>                       # first attempt (branch from main)
+#   execute.sh <issue> <turn> <tier>                       # first attempt (branch from base branch)
 #   execute.sh <issue> <turn> <tier> --retry <pr> <failures-file>   # grade-FAIL retry (same branch)
 # Exit: 0 = PR open/updated · 10 = parked needs-human · 1 = infra error after retry.
 
@@ -54,6 +54,7 @@ run_container() {
 		--env-file "$YANTRA_ENV_FILE" \
 		-e "PROMPT_B64=$(base64 -w0 "$prompt_file")" \
 		-e "MODEL=$MODEL" -e "BRANCH=$BRANCH" -e "ISSUE=$ISSUE" -e "TIER=$TIER" \
+		-e "BASE_BRANCH=$BASE_BRANCH" \
 		-e "TITLE_B64=$(printf '%s' "$title" | base64 -w0)" \
 		-e "IS_RETRY=$([[ -n "$RETRY_PR" ]] && echo 1 || echo 0)" \
 		"$YANTRA_EXEC_IMAGE" bash -s <<'BOOTSTRAP'
@@ -62,12 +63,12 @@ export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
 mkdir -p /workspace && cd /workspace
-git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
+git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
 cd repo
 if [[ "$IS_RETRY" == "1" ]]; then
 	git checkout --quiet "$BRANCH"
 else
-	git checkout --quiet -b "$BRANCH"
+	git checkout --quiet -b "$BRANCH" "origin/$BASE_BRANCH"
 fi
 echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
 
@@ -92,7 +93,7 @@ Fix the failures. You may not weaken or skip tests. Commit the fix." \
 fi
 
 # refuse to ship an empty attempt
-git diff --quiet origin/main..HEAD 2>/dev/null && { echo "NO_DIFF"; exit 21; }
+git diff --quiet "origin/$BASE_BRANCH"..HEAD 2>/dev/null && { echo "NO_DIFF"; exit 21; }
 
 git push --quiet -u origin "$BRANCH"
 
@@ -104,7 +105,7 @@ if [[ "$IS_RETRY" == "0" ]]; then
 		tail -20 /workspace/selfcheck.log; echo '```'
 		echo; echo "Closes #$ISSUE"
 	} > /workspace/final-body.md
-	gh pr create --repo "$YANTRA_REPO" --base main --head "$BRANCH" \
+	gh pr create --repo "$YANTRA_REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
 		--title "[Yantra][$TIER] $TITLE" --body-file /workspace/final-body.md
 fi
 BOOTSTRAP

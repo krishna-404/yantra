@@ -55,12 +55,14 @@ ensure_var NOVU_SECRET_KEY "Novu secret key"
 #   YANTRA_SKILLS_REPO=<owner/yantra-skills, Phase 1>
 
 say "4/8 Repo clone → $REPO_DIR (the clone IS the deployment)"
+# Integration branch: we always work on staging (convention since 2026-07-04).
+grep -q "^YANTRA_BASE_BRANCH=" $ENV_FILE || echo "YANTRA_BASE_BRANCH=staging" >> $ENV_FILE
 # shellcheck disable=SC1090
-source <(grep -E '^(YANTRA_REPO|GH_TOKEN)=' $ENV_FILE)
+source <(grep -E '^(YANTRA_REPO|GH_TOKEN|YANTRA_BASE_BRANCH)=' $ENV_FILE)
 if [[ -d $REPO_DIR/.git ]]; then
-	git -C $REPO_DIR pull --ff-only
+	git -C $REPO_DIR checkout "$YANTRA_BASE_BRANCH" && git -C $REPO_DIR pull --ff-only
 else
-	git clone "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" $REPO_DIR
+	git clone -b "$YANTRA_BASE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" $REPO_DIR
 fi
 
 say "5/8 gh auth + labels"

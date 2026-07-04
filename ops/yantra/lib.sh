@@ -23,6 +23,9 @@ if [[ -f "$YANTRA_ENV_FILE" ]]; then
 fi
 
 REPO="${YANTRA_REPO:?YANTRA_REPO must be set (owner/repo)}"
+# The loop's integration branch: execute branches from it, PRs target it, the
+# canary watches its CI. Working convention since 2026-07-04: staging.
+BASE_BRANCH="${YANTRA_BASE_BRANCH:-staging}"
 mkdir -p "$YANTRA_TELEMETRY_DIR"
 
 # --- logging ---------------------------------------------------------------

@@ -6,9 +6,13 @@ Retired in Phase 2 when `apps/yantra` passes the parity suite. Everything here i
 
 ## Deploy (VPS)
 
+The integration branch is `staging` (`YANTRA_BASE_BRANCH`, set in the env file):
+execute branches from it, PRs target it, canary watches its CI, branch protection
++ required checks apply to it.
+
 ```bash
-# one-time (after Y0.5's dirs/env/creds exist)
-git clone git@github.com:<you>/yantra.git /opt/yantra/repo   # the clone IS the deployment
+# one-time (after Y0.5's dirs/env/creds exist) — or just run vps-bootstrap.sh
+git clone -b staging git@github.com:<you>/yantra.git /opt/yantra/repo   # the clone IS the deployment
 docker build -t yantra-exec:0 /opt/yantra/repo/ops/yantra/
 YANTRA_REPO=<you>/yantra /opt/yantra/repo/ops/yantra/setup-labels.sh
 cp /opt/yantra/repo/ops/yantra/systemd/* /etc/systemd/system/

@@ -18,5 +18,5 @@ inbox):
 6. If nothing qualifies for promotion tonight, open no PR and say so — an empty night
    is a valid, common outcome.
 
-Work with git + gh CLI in this container. Branch names: `yantra/dream-<date>`.
+Work with git + gh CLI in this container. Branch names: `yantra/dream-<date>`; PRs target the branch you were cloned on (the integration branch).
 Finish with a one-paragraph summary of what you promoted, struck, or skipped.

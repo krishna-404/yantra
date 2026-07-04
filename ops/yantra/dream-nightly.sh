@@ -35,14 +35,14 @@ docker run --rm -i \
 	--memory=4g --cpus=2 --network=bridge \
 	--env-file "$YANTRA_ENV_FILE" \
 	-e "PROMPT_B64=$(base64 -w0 "$prompt_file")" \
-	-e "MODEL=$MODEL" \
+	-e "MODEL=$MODEL" -e "BASE_BRANCH=$BASE_BRANCH" \
 	"$YANTRA_EXEC_IMAGE" bash -s <<'BOOTSTRAP'
 set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
 mkdir -p /workspace && cd /workspace
-git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
+git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
 cd repo
 echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
 claude -p "$(cat /workspace/prompt.md)" --model "$MODEL" --dangerously-skip-permissions

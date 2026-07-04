@@ -1,5 +1,10 @@
 # Yantra Loop Protocol (v0/v1)
 
+> **Deployment note (2026-07-04):** the integration branch is configurable via
+> `YANTRA_BASE_BRANCH` (v0 default: `staging` — we always work on staging). Every
+> mention of `main` below (clone base, PR target, canary branch, branch protection)
+> reads as that base branch.
+
 The exact machine. Loop v0 (Phase 0) implements this in scripts; the `apps/yantra`
 harness (Phase 2) implements the same protocol and must pass the parity suite (§8).
 Any behavior not specified here is a bug in this document — fix the document via PR
