@@ -31,6 +31,23 @@ jobs:
       - run: yarn lint
       - run: yarn check-types
 
+  knip:
+    name: knip
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      # knip loads apps/frontend/vite.config.ts, which resolves through
+      # @connected-repo/zod-schemas' package exports to dist/ — build it first
+      # (same reason as the tests job).
+      - run: yarn workspace @connected-repo/zod-schemas run build
+      - run: yarn knip
+
   tests:
     name: tests
     runs-on: ubuntu-latest
