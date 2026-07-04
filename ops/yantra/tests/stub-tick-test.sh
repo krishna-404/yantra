@@ -42,6 +42,7 @@ case "$*" in
 	"pr list"*"--search"*) echo 0 ;;
 	"pr view 77"*"--json number,title,headRefOid"*) cat "$S/pr77.json" ;;
 	"pr view 77"*"--json body --jq .body") echo "stub body — Closes #42" ;;
+	"pr checks 77"*) echo '[{"name":"checks","bucket":"pass","link":"https://stub/1"},{"name":"tests","bucket":"pass","link":"https://stub/2"}]' ;;
 	"pr view"*"--json mergeCommit"*) echo "deadbeef" ;;
 	"pr diff 77"*) echo "--- a/README.md"; echo "+++ b/README.md"; echo "+stub" ;;
 	*) echo "UNHANDLED gh: $*" >> "$S/unhandled.log"; echo "" ;;

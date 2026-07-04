@@ -56,6 +56,26 @@ fi
 # --- helpers -----------------------------------------------------------------
 tier_rank() { case "$1" in T0) echo 0;; T1) echo 1;; T2) echo 2;; T3) echo 3;; *) echo 3;; esac; }
 
+grade_container() { # grade_container <model> <prompt-file> <head-sha> — rubric leg with checkout
+	docker run --rm -i \
+		--memory=4g --cpus=2 --network=bridge \
+		--env-file "$YANTRA_ENV_FILE" \
+		-e "PROMPT_B64=$(base64 -w0 "$2")" \
+		-e "MODEL=$1" -e "HEAD_SHA=$3" \
+		"$YANTRA_EXEC_IMAGE" bash -s <<'GRADEBOOT'
+set -euo pipefail
+export GIT_TERMINAL_PROMPT=0
+mkdir -p /workspace && cd /workspace
+git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${YANTRA_REPO}.git" repo
+cd repo
+git checkout --quiet "$HEAD_SHA"
+echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
+# Read-only run: no --dangerously-skip-permissions needed (Read/Grep/Glob are
+# permissionless); root is fine without that flag.
+claude -p "$(cat /workspace/prompt.md)" --model "$MODEL"
+GRADEBOOT
+}
+
 linked_issue() { # from "Closes #N" in the PR body
 	gh pr view "$1" --repo "$REPO" --json body --jq .body | grep -oiE 'closes #[0-9]+' | head -1 | grep -oE '[0-9]+' || true
 }
@@ -68,16 +88,25 @@ grade_one() {
 	pv=$(grep -m1 -oE 'prompt-version: [0-9]+' "$YANTRA_OPS_DIR/prompts/grade.md" | grep -oE '[0-9]+')
 
 	pjson=$(gh pr view "$pr" --repo "$REPO" \
-		--json number,title,headRefOid,additions,deletions,changedFiles,files,labels,statusCheckRollup,comments,mergeStateStatus)
-	sha=$(jq -r .headRefOid <<<"$pjson")
+		--json number,title,headRefOid,additions,deletions,changedFiles,files,labels,comments || true)
+	sha=$(jq -r '.headRefOid // empty' <<<"$pjson" 2>/dev/null || true)
+	# A failed/partial fetch must never grade on empty data (live-fire bug: empty
+	# sha broke the pending-skip, dedupe, and fail-count all at once).
+	if [[ -z "$pjson" || -z "$sha" ]]; then
+		log ERROR "grade pr=#$pr: PR fetch failed/incomplete — skipping this tick"
+		return 0
+	fi
 
-	# CI leg — skip while pending; red counts as a failed attempt.
-	local ci_state
-	ci_state=$(jq -r '[.statusCheckRollup[]? | .conclusion // .state // "PENDING"] as $c
-		| if ($c | length) == 0 then "PENDING"
-		  elif ($c | map(select(. == "FAILURE" or . == "ERROR" or . == "CANCELLED" or . == "TIMED_OUT")) | length) > 0 then "FAILURE"
-		  elif ($c | map(select(. == "SUCCESS" or . == "NEUTRAL" or . == "SKIPPED")) | length) == ($c | length) then "SUCCESS"
-		  else "PENDING" end' <<<"$pjson")
+	# CI leg via gh pr checks buckets — skip while pending; red counts as a failed attempt.
+	local checks ci_state
+	checks=$(gh pr checks "$pr" --repo "$REPO" --json name,bucket,link 2>/dev/null || true)
+	if [[ -z "$checks" ]] || ! jq -e 'length > 0' <<<"$checks" >/dev/null 2>&1; then
+		log INFO "grade skip pr=#$pr: no CI checks reported yet"; return 0
+	fi
+	ci_state=$(jq -r '[.[].bucket] as $b
+		| if ($b | map(select(. == "fail" or . == "cancel")) | length) > 0 then "FAILURE"
+		  elif ($b | map(select(. == "pass" or . == "skipping")) | length) == ($b | length) then "SUCCESS"
+		  else "PENDING" end' <<<"$checks")
 	if [[ "$ci_state" == "PENDING" ]]; then log INFO "grade skip pr=#$pr: CI pending"; return 0; fi
 
 	# Already graded this SHA?
@@ -100,7 +129,8 @@ grade_one() {
 			'{verdict:"FAIL", tier_confirmed:$t, criteria:[], rubric_scores:{},
 			  failures:["CI leg red: required checks failed on this PR — read the CI logs, fix the root cause; never weaken tests"]}')
 	else
-		# Rubric leg — fresh opus container, diff + spec + rubric, never the PR body's claims.
+		# Rubric leg — fresh opus container WITH a checkout at the PR head, so
+		# state-based criteria (greps, file existence) are verifiable, not guessed.
 		local spec diff prompt_file raw
 		spec=""
 		[[ "$issue" != "0" ]] && spec=$(gh issue view "$issue" --repo "$REPO" --json title,body --jq '"# " + .title + "\n\n" + .body')
@@ -111,11 +141,13 @@ grade_one() {
 			echo; echo "## Rubric (rubrics.md)"; echo
 			cat "$YANTRA_OPS_DIR/../../docs/yantra/rubrics.md"
 			echo; echo "## Product Spec (issue #$issue)"; echo; echo "${spec:-<no linked issue found>}"
-			echo; echo "## Advise tier label: $tier_label · CI leg: $ci_state"
+			echo; echo "## Advise tier label: $tier_label"
+			echo; echo "## CI leg (harness-verified): $ci_state — these check results ARE the CI evidence; cite the links:"
+			echo '```json'; echo "$checks"; echo '```'
 			echo; echo "## PR #$pr diff"; echo '```diff'; echo "$diff"; echo '```'
 		} > "$prompt_file"
 
-		if ! raw=$(claude_container "$model" "$prompt_file"); then
+		if ! raw=$(grade_container "$model" "$prompt_file" "$sha"); then
 			rm -f "$prompt_file"
 			log ERROR "grade infra error pr=#$pr run=$run"
 			telemetry "$run" "$turn" "$issue" grade "$model" "$tier_label" unknown "$started" infra_error "$pr" false false "$pv"
