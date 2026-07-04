@@ -1,5 +1,56 @@
-import { registerSW } from 'virtual:pwa-register';
 import { getDataProxy } from '@frontend/worker/worker.proxy';
+
+/**
+ * Reload-storm circuit breaker.
+ *
+ * A service-worker update that takes control mid-session triggers
+ * `window.location.reload()` inside vite-plugin-pwa's register runtime
+ * (prompt mode, on the `controlling` event). Under pathological conditions —
+ * DevTools "Update on reload" force-installing a new SW version on every
+ * load, or an old auto-skipWaiting-era SW handing off against the current
+ * prompt-mode runtime — that reload re-arms the same listener and the page
+ * reloads forever, several times a second, fetching only /sw.js (+ its map)
+ * because everything else is precached. Seen live on staging 2026-07-04.
+ *
+ * The breaker counts page loads in sessionStorage (per-tab, survives
+ * reloads, dies with the tab). Four loads inside 15 seconds is a storm no
+ * human causes by hand: we unregister every service worker, skip SW
+ * registration for this page load, and let the next load start clean.
+ * Cost of a false trip: one re-precache. Cost of no breaker: a hung tab.
+ */
+const SW_STORM_KEY = 'sw-reload-guard';
+const SW_STORM_WINDOW_MS = 15_000;
+const SW_STORM_LIMIT = 4;
+
+let swStormLockout: boolean | null = null;
+
+export function swReloadStormDetected(): boolean {
+  if (swStormLockout !== null) return swStormLockout;
+  try {
+    const now = Date.now();
+    const loads = (JSON.parse(sessionStorage.getItem(SW_STORM_KEY) ?? '[]') as number[]).filter(
+      (t) => now - t < SW_STORM_WINDOW_MS,
+    );
+    loads.push(now);
+    sessionStorage.setItem(SW_STORM_KEY, JSON.stringify(loads));
+    swStormLockout = loads.length >= SW_STORM_LIMIT;
+    if (swStormLockout) {
+      console.error(
+        `[PWA] Reload storm detected (${loads.length} loads in ${SW_STORM_WINDOW_MS / 1000}s) — unregistering service workers and skipping SW registration for this load.`,
+      );
+      sessionStorage.removeItem(SW_STORM_KEY);
+      if ('serviceWorker' in navigator) {
+        void navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+          .catch(() => {});
+      }
+    }
+  } catch {
+    swStormLockout = false; // sessionStorage unavailable (rare) — never block boot
+  }
+  return swStormLockout;
+}
 
 /**
  * True when the app is running as an installed PWA rather than a regular
@@ -48,32 +99,19 @@ export async function requestStoragePersistence() {
 }
 
 export function initPWA() {
+  // Trip the breaker (and record this load) before anything SW-related runs.
+  swReloadStormDetected();
+
   // Request persistence as early as possible
   requestStoragePersistence();
 
-  // Register service worker for PWA functionality
-  registerSW({
-    onRegistered(r: ServiceWorkerRegistration | undefined) {
-      if (r) {
-        // Monitor installation state
-        const sw = r.installing || r.waiting || r.active;
-        if (sw) {
-          sw.addEventListener('statechange', () => {
-            const state = sw.state;
-            if (state === 'installing') {
-              console.info('[PWA] SW installing...');
-            }
-            if (state === 'activated') {
-              console.info('[PWA] SW activated.');
-            }
-          });
-        }
-      }
-    },
-    onRegisterError(error: unknown) {
-      console.error('[PWA] SW registration failed: ', error);
-    },
-  });
+  // NOTE: the service worker is registered in exactly ONE place —
+  // `useRegisterSW()` inside PwaUpdatePrompt (mounted once at RootLayout,
+  // present on every route including auth pages). This module used to ALSO
+  // call `registerSW()`, which created a second workbox-window instance;
+  // each instance classifies updates it didn't initiate as "external" and
+  // arms its own reload-on-controlling listener, multiplying reloads during
+  // the 2026-07-04 staging reload storm. Do not add a second registration.
 
   // Listen for messages from the SW.
   //   - `SW_PRECACHE_PROGRESS`: precache progress signal (dev only).
