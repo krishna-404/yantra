@@ -89,14 +89,21 @@ if [[ -z "$ready_issue" ]]; then
 fi
 
 # ── CLAIM (labels + claim comment; back off from a live rival claim) ──
+# A claim comment counts as live ONLY if nothing released it afterwards — parks
+# (advise/execute) and reaps post a release marker; without this, every
+# park→fix→re-ready cycle would stall for the full 2 h window.
 turn=$(ulid)
 last_claim=$(gh issue view "$ready_issue" --repo "$REPO" --json comments \
 	--jq '[.comments[] | select(.body | contains("yantra claim")) | .createdAt] | sort | last // empty')
 if [[ -n "$last_claim" ]]; then
-	age=$(( $(date -u +%s) - $(date -u -d "$last_claim" +%s) ))
-	if (( age < 7200 )); then
-		log WARN "tick $TICK: issue #$ready_issue has a live claim (${age}s old) — backing off"
-		exit 0
+	last_release=$(gh issue view "$ready_issue" --repo "$REPO" --json comments \
+		--jq '[.comments[] | select(.body | (contains("parked") or contains("yantra reap") or contains("claim released"))) | .createdAt] | sort | last // empty')
+	if [[ -z "$last_release" || "$last_release" < "$last_claim" ]]; then
+		age=$(( $(date -u +%s) - $(date -u -d "$last_claim" +%s) ))
+		if (( age < 7200 )); then
+			log WARN "tick $TICK: issue #$ready_issue has a live unreleased claim (${age}s old) — backing off"
+			exit 0
+		fi
 	fi
 fi
 exec_model=$(route_model "execute.T1") # provisional; advise confirms the tier
