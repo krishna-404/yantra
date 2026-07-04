@@ -57,5 +57,8 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --frozen-lockfile
+      # Backend runs from TS via tsx, but @connected-repo/zod-schemas resolves
+      # through its package exports to dist/ — build it in this job too.
+      - run: yarn workspace @connected-repo/zod-schemas run build
       - run: yarn test:db:setup
       - run: yarn test:run
