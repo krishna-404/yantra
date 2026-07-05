@@ -103,7 +103,15 @@ yarn build --filter='./packages/*' >>/workspace/selfcheck.log 2>&1 || \
 claude -p "$(cat /workspace/prompt.md)" --model "$MODEL" --dangerously-skip-permissions
 
 selfcheck() {
-	yarn lint && yarn check-types && yarn test:db:setup && yarn test:run
+	# Mirror the CI gates so the executor catches failures locally (in the one fix
+	# pass below) instead of pushing red and relying on the grade round-trip.
+	# `knip` matters for strip/deletion work: removing a module orphans files/deps
+	# that live outside it, and knip's error-level rules (files/dependencies/
+	# unlisted) fail CI. Without knip here the executor can't see those orphans
+	# before pushing, and the grade-FAIL retry only reports "CI red" without the
+	# specifics — which wedges the turn (bit #44). knip's pre-existing `warn`
+	# backlog (exports/types) does not fail, so this only trips on NEW rot.
+	yarn lint && yarn check-types && yarn knip && yarn test:db:setup && yarn test:run
 }
 if ! selfcheck >>/workspace/selfcheck.log 2>&1; then
 	echo "--- self-check failed; giving the agent one fix pass ---" >>/workspace/selfcheck.log
