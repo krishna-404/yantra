@@ -28,7 +28,12 @@
 	// @orpc/server is a peer/runtime dependency resolved through @orpc/* packages;
 	// it has no direct import site knip can see.
 	"ignoreDependencies": [
-		"@orpc/server"
+		"@orpc/server",
+		// Root-level dep consumed only by the journal-entry media UI
+		// (SmartMediaUploader), removed with the journal strip (#11). No remaining
+		// import site; dropping it from package.json is a follow-up (this PR must
+		// not edit dependency sections).
+		"ulid"
 	],
 	"workspaces": {
 		"apps/backend": {
