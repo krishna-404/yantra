@@ -1,6 +1,4 @@
 import * as Comlink from "comlink";
-import { journalEntriesDb } from "../modules/journal-entries/worker/journal-entries.db";
-import { promptsDb } from "../modules/prompts/worker/prompts.db";
 import { subscribe } from "./db/db.manager";
 import { filesDb } from "./db/files.db";
 import { syncMetadataDb } from "./db/sync_metadata.db";
@@ -29,8 +27,6 @@ import { setMediaProxyInternal } from "./worker.context";
  */
 const dataWorkerApi = {
 	filesDb: Comlink.proxy(filesDb),
-	journalEntriesDb: Comlink.proxy(journalEntriesDb),
-	promptsDb: Comlink.proxy(promptsDb),
 	teamsAppDb: Comlink.proxy(teamsAppDb),
 	teamMembersDb: Comlink.proxy(teamMembersDb),
 	syncMetadataDb: Comlink.proxy(syncMetadataDb),
