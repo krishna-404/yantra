@@ -10,19 +10,9 @@ import { Stack } from "@connected-repo/ui-mui/layout/Stack";
 import { NotificationBanner } from "@frontend/components/notifications/NotificationBanner";
 import { useSessionInfo } from "@frontend/contexts/UserContext";
 import { useActiveTeamId, useWorkspace } from "@frontend/contexts/WorkspaceContext";
-import { orpc } from "@frontend/utils/orpc.tanstack.client";
 import BusinessIcon from "@mui/icons-material/Business";
 import PersonIcon from "@mui/icons-material/Person";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
 import { useNavigate } from "react-router";
-
-// Fires on the FIRST Dashboard mount within a single JS runtime. A full
-// page load (login callback via `window.location.href`, cold tab open,
-// hard refresh) resets this so the empty-entries redirect can run again;
-// SPA navigation preserves it, so clicking the Dashboard link within a
-// running session renders the dashboard normally regardless of entry count.
-let firstRunRedirectChecked = false;
 
 const DashboardPage = () => {
 	const navigate = useNavigate();
@@ -30,40 +20,6 @@ const DashboardPage = () => {
 	const { user } = useSessionInfo();
 	const { activeWorkspace } = useWorkspace();
 	const teamId = useActiveTeamId();
-
-	// Pull the live count of entries from the backend.
-	const { data: entries, isLoading: entriesLoading } = useQuery({
-		...orpc.journalEntries.getAll.queryOptions(),
-		enabled: !!teamId,
-	});
-	const entryCount = entries?.length ?? 0;
-
-	// First-run redirect: only on cold app open / post-login callback.
-	// Manual /dashboard navigation within a running SPA session does NOT
-	// redirect — `firstRunRedirectChecked` short-circuits it.
-	useEffect(() => {
-		if (firstRunRedirectChecked) return;
-		if (!teamId) return;
-		if (entriesLoading) return;
-		if (!entries) return;
-
-		firstRunRedirectChecked = true;
-		if (entries.length === 0) {
-			navigate("/journal-entries/new", { replace: true });
-		}
-	}, [teamId, entriesLoading, entries, navigate]);
-
-	// Avoid a one-frame flash of the empty dashboard on the render that
-	// will trigger the first-run redirect. Once the check has run, always
-	// render the dashboard — even when entries are empty.
-	if (
-		!firstRunRedirectChecked &&
-		!entriesLoading &&
-		entries &&
-		entries.length === 0
-	) {
-		return null;
-	}
 
 	return (
 		<Box
@@ -118,34 +74,24 @@ const DashboardPage = () => {
 
 						{/* Workspace Status */}
 						<Card sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-							<Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-								<Stack direction="row" spacing={2} alignItems="center">
-									<Box 
-										sx={{ 
-											p: 1.5, 
-											borderRadius: 2, 
-											bgcolor: activeWorkspace.type === 'team' ? 'primary.main' : 'secondary.main',
-											color: 'white',
-											display: 'flex'
-										}}
-									>
-										{activeWorkspace.type === 'team' ? <BusinessIcon /> : <PersonIcon />}
-									</Box>
-									<Box>
-										<Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.7rem', fontWeight: 700 }}>
-											Active Workspace
-										</Typography>
-										<Typography variant="h6" fontWeight={600}>
-											{activeWorkspace.name}
-										</Typography>
-									</Box>
-								</Stack>
-								<Box sx={{ textAlign: 'right' }}>
-									<Typography variant="h4" fontWeight={700} color="primary.main">
-										{entryCount}
+							<Stack direction="row" spacing={2} alignItems="center">
+								<Box
+									sx={{
+										p: 1.5,
+										borderRadius: 2,
+										bgcolor: activeWorkspace.type === 'team' ? 'primary.main' : 'secondary.main',
+										color: 'white',
+										display: 'flex'
+									}}
+								>
+									{activeWorkspace.type === 'team' ? <BusinessIcon /> : <PersonIcon />}
+								</Box>
+								<Box>
+									<Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.7rem', fontWeight: 700 }}>
+										Active Workspace
 									</Typography>
-									<Typography variant="caption" color="text.secondary" fontWeight={600}>
-										Total Entries
+									<Typography variant="h6" fontWeight={600}>
+										{activeWorkspace.name}
 									</Typography>
 								</Box>
 							</Stack>
@@ -202,33 +148,6 @@ const DashboardPage = () => {
 									</Typography>
 									<Button variant="outlined" size="small">
 										{teamId ? "Manage Team" : "Go to Profile"}
-									</Button>
-								</Card>
-
-								<Card
-									sx={{
-										p: 3,
-										flex: 1,
-										cursor: "pointer",
-										transition: "all 0.2s ease-in-out",
-										border: "1px solid",
-										borderColor: "divider",
-										"&:hover": {
-											borderColor: "primary.main",
-											transform: "translateY(-4px)",
-											boxShadow: 4,
-										},
-									}}
-									onClick={() => navigate("/journal-entries")}
-								>
-									<Typography variant="h6" gutterBottom fontWeight={600}>
-										Journal Entries
-									</Typography>
-									<Typography variant="body2" color="text.secondary" mb={2}>
-										View and manage your {teamId ? "team's" : "personal"} entries
-									</Typography>
-									<Button variant="outlined" size="small">
-										Manage Entries
 									</Button>
 								</Card>
 							</Stack>
