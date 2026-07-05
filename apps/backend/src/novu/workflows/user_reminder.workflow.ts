@@ -1,9 +1,9 @@
 import { workflow } from "@novu/framework";
 
 /**
- * Daily journal reminder — triggered by the reminder-dispatch cron
+ * Daily user reminder — triggered by the reminder-dispatch cron
  * (apps/backend/src/cron_jobs/reminder_dispatch.cron.ts) when a user's
- * `journalReminderTimes` matches the current minute in their timezone.
+ * configured reminder times match the current minute in their timezone.
  *
  * Push step fires an OS notification (if the user has push enabled);
  * In-app step is always visible in the Inbox bell regardless of push.
@@ -21,24 +21,23 @@ export const userReminderWorkflow = workflow(
 		await step.inApp("send-in-app", async () => ({
 			subject: payload.title,
 			body: payload.body,
-			redirect: { url: "/journal-entries/new" },
+			redirect: { url: "/" },
 		}));
 	},
 	{
 		payloadSchema: {
 			type: "object",
 			properties: {
-				title: { type: "string", default: "Time to journal ✍️" },
+				title: { type: "string", default: "Daily reminder ✍️" },
 				body: {
 					type: "string",
-					default: "Take a moment to log today's entry.",
+					default: "Take a moment for your daily check-in.",
 				},
 			},
 			required: ["title", "body"],
 			additionalProperties: false,
 		} as const,
-		name: "Journal Reminder",
-		description:
-			"Daily nudge to write a journal entry at the user's chosen time.",
+		name: "User Reminder",
+		description: "Daily reminder at the user's chosen time.",
 	},
 );
