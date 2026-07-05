@@ -88,6 +88,18 @@ fi
 
 yarn install --frozen-lockfile >/workspace/selfcheck.log 2>&1
 
+# Build the workspace packages (zod-schemas, ui-mui) BEFORE the agent runs and before
+# the self-check. Backend/frontend type-check resolves `@connected-repo/*` through each
+# package's built `dist/` (package `exports`), so a fresh container with no `dist/`
+# throws phantom `Cannot find module '@connected-repo/zod-schemas/…'` errors. Executors
+# were mis-diagnosing that as a source bug and editing out-of-scope package files
+# (parked #11 twice this way). CI builds the packages first; the container must too.
+# App builds (frontend/backend) are intentionally excluded — they need env the container
+# lacks and would abort here; only the leaf packages are needed for type resolution.
+# (See .brain/conventions.md "Environment gates vs. regressions".)
+yarn build --filter='./packages/*' >>/workspace/selfcheck.log 2>&1 || \
+	echo "WARN: package pre-build returned non-zero; check-types may false-red" >>/workspace/selfcheck.log
+
 claude -p "$(cat /workspace/prompt.md)" --model "$MODEL" --dangerously-skip-permissions
 
 selfcheck() {
