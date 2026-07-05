@@ -1,14 +1,12 @@
 import {
-	journalEntryCreatedFanoutTaskDef,
 	subscriptionAlertWebhookTaskDef,
 	userCreatedEventDef,
 	userDeletedEventDef,
 	userReminderTaskDef,
 } from "@backend/events/events.schema";
-import { journalEntryCreatedFanoutHandler } from "@backend/modules/journal-entries/notifications/created_fanout.notifications.journal_entries";
-import { reminderNotificationJournalEntryHandler } from "@backend/modules/journal-entries/notifications/reminder.notifications.journal_entries";
 import { userCreatedNotificationHandler } from "@backend/modules/users/notifications/user_created.notifications.user";
 import { userDeletedNotificationHandler } from "@backend/modules/users/notifications/user_deleted.notifications.user";
+import { userReminderNotificationHandler } from "@backend/modules/users/notifications/user_reminder.notifications.user";
 import { subscriptionAlertWebhookHandler } from "@backend/modules/webhook_calls/handlers/subscription_alert_webhook.handler";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
 import { logger } from "@backend/utils/logger.utils";
@@ -61,7 +59,7 @@ export const startEventBus = (): Promise<void> => {
 			tbus.registerTask(
 				createTaskHandler({
 					taskDef: userReminderTaskDef,
-					handler: reminderNotificationJournalEntryHandler,
+					handler: userReminderNotificationHandler,
 				}),
 			);
 
@@ -69,13 +67,6 @@ export const startEventBus = (): Promise<void> => {
 				createTaskHandler({
 					taskDef: subscriptionAlertWebhookTaskDef,
 					handler: subscriptionAlertWebhookHandler,
-				}),
-			);
-
-			tbus.registerTask(
-				createTaskHandler({
-					taskDef: journalEntryCreatedFanoutTaskDef,
-					handler: journalEntryCreatedFanoutHandler,
 				}),
 			);
 
