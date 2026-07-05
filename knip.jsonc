@@ -1,22 +1,64 @@
 {
 	"$schema": "https://unpkg.com/knip@5/schema.json",
+
+	// ---------------------------------------------------------------------------
+	// Rule severities (Y1.A — knip wired into CI).
+	//
+	// `error` rules gate CI (knip exits non-zero); `warn` rules are reported in
+	// every CI run but do NOT block. The baseline for every `error` rule is zero
+	// today, so a NEW unused file / unused dep / unlisted import turns CI red.
+	//
+	// `exports`, `types`, and `duplicates` are set to `warn` because they carry a
+	// large pre-existing backlog of REAL dead code whose removal is explicitly out
+	// of scope for this PR (each cluster is filed as its own follow-up issue in the
+	// PR body). They are NOT silenced — knip still prints every one on each run.
+	// Once the follow-up issues land and the backlog reaches zero, flip these back
+	// to `error` to gate on new dead exports/types too.
+	// ---------------------------------------------------------------------------
+	"rules": {
+		"files": "error",
+		"dependencies": "error",
+		"devDependencies": "error",
+		"unlisted": "error",
+		"exports": "warn",
+		"types": "warn",
+		"duplicates": "warn"
+	},
+
+	// @orpc/server is a peer/runtime dependency resolved through @orpc/* packages;
+	// it has no direct import site knip can see.
 	"ignoreDependencies": [
 		"@orpc/server"
 	],
-	"rules": {
-		"exports": "error",
-		"files": "error"
-	},
 	"workspaces": {
 		"apps/backend": {
 			"entry": [
 				"src/server.ts"
 			],
-			"ignoreDependencies": [],
+			"ignoreDependencies": [
+				// Transitive/subpath deps that resolve at runtime through a parent
+				// package but are imported by path, so knip reports them as
+				// "unlisted". They are not direct dependencies.
+				"pqb", // pqb/node-postgres — re-exported by orchid-orm
+				"@orpc/contract", // used only in a colocated *.test.ts
+				"@opentelemetry/core", // pulled in via the @opentelemetry/* SDK meta-packages
+				"@orpc/standard-server-node", // subpath helper shipped by @orpc/server
+				// Genuinely unused direct deps — removal from package.json is a
+				// follow-up issue (see PR body); knip can't drop them here without
+				// editing package.json, which this PR must not touch.
+				"@types/node-cron",
+				"dayjs"
+			],
 			"ignoreFiles": [
 				"src/db/migrations/**",
 				"src/middlewares/session-security.middleware.ts",
 				"src/procedures/sensitive.procedure.ts"
+			],
+			"ignore": [
+				// Dead files whose deletion is a follow-up issue (see PR body).
+				// Deleting non-trivial dead code is out of scope for this PR.
+				"src/events/events.queries.ts",
+				"src/utils/dayjs.utils.ts"
 			],
 			"project": [
 				"src/**/*.ts"
@@ -25,7 +67,27 @@
 		"apps/frontend": {
 			"entry": [
 				"src/main.tsx",
-				"index.html"
+				"index.html",
+				// Service-worker entry — loaded by the browser, not imported by app
+				// code, so knip flags it as an unused file unless declared here.
+				"src/sw/sw.ts"
+			],
+			"ignoreDependencies": [
+				// Subpath imports resolved through a parent package (reported as
+				// "unlisted"); not direct dependencies.
+				"@novu/js", // @novu/js/themes
+				"workbox-strategies", // imported by the service worker (src/sw/sw.ts); transitive via workbox
+				// Genuinely unused direct deps — removal from package.json is a
+				// follow-up issue (see PR body).
+				"axios",
+				"mp4box",
+				"zustand"
+			],
+			"ignore": [
+				// Ambient PWA install typings; a declaration file with no importers,
+				// which knip reports as an unused file. Deletion/relocation is a
+				// follow-up issue (see PR body).
+				"src/types/pwa-install.d.ts"
 			],
 			"project": [
 				"src/**/*.{ts,tsx}"
@@ -42,6 +104,11 @@
 		"packages/ui-mui": {
 			"entry": [
 				"src/**/*.ts"
+			],
+			"ignoreDependencies": [
+				// Unused devDependency — removal from package.json is a follow-up
+				// issue (see PR body).
+				"@types/react-dom"
 			],
 			"project": [
 				"src/**/*.{ts,tsx}"
