@@ -1,3 +1,7 @@
+---
+strikes: 1
+---
+
 # Docs-correction specs can outrun the code strip they describe
 
 Issue #20 (AGENTS.md refresh) asked for AGENTS.md to "reflect post-strip reality" and

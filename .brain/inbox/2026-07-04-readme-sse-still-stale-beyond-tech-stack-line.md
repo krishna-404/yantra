@@ -1,6 +1,6 @@
 ---
 title: README's stale "SSE realtime" claim is bigger than one line
-strikes: 1
+strikes: 2
 ---
 
 Issue #1 asked to fix one Tech Stack sentence claiming SSE-based realtime sync (the
