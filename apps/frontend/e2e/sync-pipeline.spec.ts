@@ -1,4 +1,4 @@
-import { expect, test } from "../../../e2e/fixtures";
+import { expect, test } from "./fixtures";
 
 /**
  * Regression coverage for two hard-to-unit-test bug classes that live
@@ -37,8 +37,8 @@ test.describe("Sync pipeline regressions", () => {
 		// Boot the app so the DataWorker is spawned and `sync.initForUser`
 		// has opened the per-user Dexie DB. The test hook (exposed via
 		// `main.tsx` when isTest) resolves once the worker.proxy module
-		// has loaded.
-		await page.goto("/journal-entries");
+		// has loaded. Any authed route works; `/dashboard` is the home route.
+		await page.goto("/dashboard");
 		await page.waitForLoadState("networkidle");
 		await page.waitForFunction(
 			// biome-ignore lint/suspicious/noExplicitAny: test-only bridge
