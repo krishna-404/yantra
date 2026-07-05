@@ -65,10 +65,6 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 						lazy: lazyRoute(() => import("@frontend/pages/Dashboard.page")),
 					},
 					{
-						path: "journal-entries/*",
-						lazy: lazyRoute(() => import("@frontend/modules/journal-entries/journal-entries.router")),
-					},
-					{
 						path: "teams/*",
 						lazy: lazyRoute(() => import("@frontend/modules/teams/teams.router")),
 					},

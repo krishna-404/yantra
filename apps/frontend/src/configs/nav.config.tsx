@@ -1,7 +1,5 @@
 import { DashboardIcon } from "@connected-repo/ui-mui/icons/DashboardIcon";
 import { HomeIcon } from "@connected-repo/ui-mui/icons/HomeIcon";
-import { ListIcon } from "@connected-repo/ui-mui/icons/ListIcon";
-import { PostAddIcon } from "@connected-repo/ui-mui/icons/PostAddIcon";
 
 interface NavItem {
 	/** Display label for the nav item */
@@ -24,17 +22,5 @@ export const navItems: NavItem[] = [
 		path: "/dashboard",
 		desktopIcon: <DashboardIcon fontSize="small" />,
 		mobileIcon: <HomeIcon />, // Different icon for mobile
-	},
-	{
-		label: "Journal Entries",
-		path: "/journal-entries",
-		desktopIcon: <ListIcon fontSize="small" />,
-		mobileIcon: <ListIcon />,
-	},
-	{
-		label: "New Entry",
-		path: "/journal-entries/new",
-		desktopIcon: <PostAddIcon fontSize="small" />,
-		mobileIcon: <PostAddIcon />,
 	},
 ];
