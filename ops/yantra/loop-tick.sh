@@ -60,6 +60,22 @@ if kill_switch_on; then
 	exit 0
 fi
 
+# ── Disk hygiene (the loop is the host's janitor — D21: only containers run here) ──
+# The 50 G volume is shared by /data/docker AND every Dokploy build. Build cache +
+# dangling layers from frequent deploys fill it and ENOSPC both the app builds and our
+# own execute containers. /opt/yantra is bind-mounted from the host and shares the
+# filesystem, so df here reports real host free space. Prune (safe: dangling images +
+# unused build cache only — never `-a`, which would delete yantra-exec:0) when low.
+disk_free_gb() { df -PBG "${YANTRA_TELEMETRY_DIR:-/opt/yantra/telemetry}" 2>/dev/null | awk 'NR==2{gsub(/[^0-9]/,"",$4); print $4+0}'; }
+DISK_FREE=$(disk_free_gb)
+if [[ -n "$DISK_FREE" ]] && (( DISK_FREE < 15 )); then
+	log WARN "tick $TICK: disk ${DISK_FREE}G free (<15G) — pruning dangling images + build cache"
+	docker image prune -f >/dev/null 2>&1 || true
+	docker builder prune -f >/dev/null 2>&1 || true
+	DISK_FREE=$(disk_free_gb)
+	log INFO "tick $TICK: ${DISK_FREE}G free after prune"
+fi
+
 # ── R5 canary scan ──
 "$OPS_DIR/canary.sh" || log ERROR "tick $TICK: canary.sh errored"
 if kill_switch_on; then log INFO "tick $TICK: killed during canary — exit"; exit 0; fi
@@ -80,6 +96,12 @@ fi
 automerges=$(automerges_last_hour)
 if (( automerges >= 4 )); then
 	log INFO "tick $TICK: R3 saturation ($automerges auto-merges in trailing hour) — no new claim"
+	exit 0
+fi
+# Fail safe: don't start an execute (heavy yarn install + build) with no room to finish.
+# Canary + grade above already ran (lighter / safety-critical); only new heavy work is gated.
+if [[ -n "$DISK_FREE" ]] && (( DISK_FREE < 8 )); then
+	log ERROR "tick $TICK: disk critically low (${DISK_FREE}G free after prune) — skipping new claim to avoid ENOSPC"
 	exit 0
 fi
 ready_issue=$(pick_ready_issue)
