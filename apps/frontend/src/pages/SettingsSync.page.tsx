@@ -9,7 +9,6 @@ import { Stack } from "@connected-repo/ui-mui/layout/Stack";
 import { SyncBubble } from "@frontend/components/layout/SyncBubble";
 import { useSyncStatus } from "@frontend/components/layout/useSyncStatus";
 import { useActiveTeamId } from "@frontend/contexts/WorkspaceContext";
-import type { StoredJournalEntry } from "@frontend/worker/db/db.manager";
 import { useLocalDb } from "@frontend/worker/db/hooks/useLocalDb";
 import type { StoredFile } from "@frontend/worker/db/schema.db.types";
 import { getDataProxy } from "@frontend/worker/worker.proxy";
@@ -67,7 +66,7 @@ export default function SettingsSyncPage() {
 		return <CloudDoneIcon sx={{ ...HERO_ICON_SX, color: "success.main" }} />;
 	};
 
-	const pendingTotal = snap.pendingEntries + snap.pendingFiles;
+	const pendingTotal = snap.pendingFiles;
 	const heroTitle = () => {
 		if (snap.status === "offline") return "You're offline";
 		if (snap.status === "syncing") return "Syncing…";
@@ -124,7 +123,6 @@ export default function SettingsSyncPage() {
 					Details
 				</Typography>
 				<Stack spacing={0}>
-					<EntryRow teamId={teamId} snap={snap} />
 					<FileRow teamId={teamId} snap={snap} />
 				</Stack>
 			</Paper>
@@ -191,129 +189,6 @@ function RowHeader({ label, pending, errors, open, onToggle, canExpand }: RowHea
 			<Typography variant="body2" sx={{ color: statusColor(s), fontWeight: 600 }}>
 				{statusLabel(pending, errors)}
 			</Typography>
-		</Box>
-	);
-}
-
-// ─── Journal-entry error drill-in ─────────────────────────────────────
-
-interface EntryRowProps {
-	teamId: string | null;
-	snap: ReturnType<typeof useSyncStatus>;
-}
-
-function EntryRow({ teamId, snap }: EntryRowProps) {
-	const [open, setOpen] = useState(false);
-	const { data: errored } = useLocalDb(
-		"journalEntries",
-		async (proxy) => (teamId ? await proxy.journalEntriesDb.listErrored(teamId) : []),
-		[teamId],
-	);
-	const canExpand = (snap.errorEntries ?? 0) > 0;
-
-	return (
-		<Box sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
-			<RowHeader
-				label="Journal entries"
-				pending={snap.pendingEntries}
-				errors={snap.errorEntries}
-				open={open}
-				onToggle={() => setOpen((v) => !v)}
-				canExpand={canExpand}
-			/>
-			<Collapse in={open && canExpand}>
-				<Stack spacing={1} sx={{ pb: 2 }}>
-					{(errored ?? []).map((row) => (
-						<JournalEntryErrorItem key={row.id} row={row} />
-					))}
-				</Stack>
-			</Collapse>
-		</Box>
-	);
-}
-
-function JournalEntryErrorItem({ row }: { row: StoredJournalEntry }) {
-	const navigate = useNavigate();
-	const [busy, setBusy] = useState(false);
-	// A row is "server-known" once the server has echoed its createdAt.
-	// Discarding a server-known row locally is meaningless — the next
-	// pull re-inserts it. Delete must go through the entry detail page,
-	// which uses deleteOnlineFirst (server delete + local hard-delete).
-	const isPending = row.createdAt == null;
-
-	const handleRetry = async () => {
-		setBusy(true);
-		try {
-			const proxy = await getDataProxy();
-			await proxy.journalEntriesDb.retry(row.id);
-			await proxy.sync.processQueue(true);
-		} finally {
-			setBusy(false);
-		}
-	};
-	const handleDiscard = async () => {
-		if (!confirm("Discard this local entry? This cannot be undone.")) return;
-		setBusy(true);
-		try {
-			const proxy = await getDataProxy();
-			await proxy.journalEntriesDb.hardDelete(row.id);
-		} finally {
-			setBusy(false);
-		}
-	};
-	const preview = (row.content || "").slice(0, 80) || "(empty entry)";
-	return (
-		<Box
-			sx={{
-				display: "flex",
-				alignItems: "flex-start",
-				justifyContent: "space-between",
-				gap: 2,
-				px: 1.5,
-				py: 1,
-				border: "1px solid",
-				borderColor: "error.light",
-				borderRadius: 1,
-				bgcolor: "error.lighter",
-			}}
-		>
-			<Box sx={{ flex: 1, minWidth: 0 }}>
-				<Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-					{preview}
-				</Typography>
-				<Typography variant="caption" color="error.main" sx={{ display: "block", mt: 0.5 }}>
-					{row.syncError || "(unknown error)"}
-				</Typography>
-				{!isPending && (
-					<Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-						Already synced to the server — to remove it, open the entry and use Delete Entry.
-					</Typography>
-				)}
-			</Box>
-			<Stack direction="row" spacing={1}>
-				<Button size="small" startIcon={<RefreshIcon />} onClick={handleRetry} disabled={busy}>
-					Retry
-				</Button>
-				{isPending ? (
-					<Button
-						size="small"
-						color="error"
-						startIcon={<DeleteOutlineIcon />}
-						onClick={handleDiscard}
-						disabled={busy}
-					>
-						Discard
-					</Button>
-				) : (
-					<Button
-						size="small"
-						onClick={() => navigate(`/journal-entries/${row.id}`)}
-						disabled={busy}
-					>
-						Open
-					</Button>
-				)}
-			</Stack>
 		</Box>
 	);
 }
