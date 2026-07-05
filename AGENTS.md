@@ -17,6 +17,21 @@
 
 ---
 
+## Yantra
+
+This repo runs under the Yantra autonomous-loop spec (`docs/yantra/`). Start at
+`docs/yantra/00-overview.md` §6 for the fresh-contributor reading order.
+
+- **`.brain/`** is the project brain: `decisions.md` (locked decisions, append-only)
+  and `conventions.md` (distilled how-we-ship-here). Both are read-only for agents
+  except `.brain/inbox/` (durable-lesson stubs for Dream to promote).
+- **Rails — do not touch without an explicit spec requirement**
+  (`docs/yantra/loop-protocol.md` §6): `.github/`, `ops/yantra/`, `apps/yantra/`,
+  `.brain/` (outside inbox), `LICENSE`, `package.json` dependency sections, any
+  `*auth*` / `*secret*` / `*.env*` file, DB migrations.
+
+---
+
 ## Layer 2: Active Task
 - **Objective**: Improve PWA Installation and Update UX.
 - **Status**: Completed.
@@ -26,7 +41,6 @@
 
 | ID | Title | Status | Description |
 |---|---|---|---|
-| [ADR-001] | Pivot to OneQ | Accepted | App returns to its ultra-minimalist journaling roots. |
 | [ADR-002] | Snake Case Columns in Raw SQL | Accepted | Always use snake_case in raw SQL Orchid ORM migrations. |
 | [ADR-003] | Hybrid Auth (Cookies + Bearer) | Accepted | Support both web and mobile auth via Better Auth bearer plugin. |
 | [ADR-004] | Smart CSRF Exception | Accepted | Exclude Bearer-token requests from CSRF checks for mobile compatibility. |
