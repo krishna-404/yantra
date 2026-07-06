@@ -6,7 +6,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 
 interface AppVersionLabelProps {
-	/** Prefix text before the version, e.g. "OneQ · ". */
+	/** Prefix text before the version, e.g. "Yantra · ". */
 	prefix?: string;
 	align?: "left" | "center" | "right";
 }
