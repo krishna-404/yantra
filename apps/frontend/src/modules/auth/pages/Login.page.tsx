@@ -69,7 +69,6 @@ export const LoginPage = () => {
 					image: dummyUser.image ?? undefined,
 					password,
 					callbackURL,
-					journalReminderTimes: []
 				}, {
 					throw: true
 				});
@@ -151,7 +150,7 @@ export const LoginPage = () => {
 											fontSize: { xs: "1.1rem", sm: "1.25rem" },
 										}}
 									>
-										Scheduled Prompt & Journal
+										Yantra
 									</Typography>
 									<Typography
 										variant="body1"
@@ -163,7 +162,7 @@ export const LoginPage = () => {
 											mx: "auto",
 										}}
 									>
-										A simple way to journal and reflect on your day with timely, thought-provoking prompts
+										Sign in to continue
 									</Typography>
 								</Box>
 

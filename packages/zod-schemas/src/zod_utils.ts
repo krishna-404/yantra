@@ -153,13 +153,6 @@ export const zLongitude = zString.regex(
 
 export const zTimezone = zString;
 
-export const uniqueTimeArrayZod = z
-	.array(z.iso.time({ precision: -1 }))
-	.refine((times) => new Set(times).size === times.length, {
-		message: "Reminder times must be unique",
-	})
-	.default([]);
-
 /**
  * Normalises query-string params that may arrive as a single string OR an
  * array of strings into `string[]`. Use for repeated query keys

@@ -53,7 +53,6 @@ export const createUserAndLogin = async (
 			email,
 			password,
 			image: fixture.image ?? undefined,
-			journalReminderTimes: ["08:00", "21:00"],
 		},
 	});
 
