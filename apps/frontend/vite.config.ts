@@ -66,8 +66,8 @@ export default defineConfig(({ mode }) => {
 					}
 					: {}),
 				manifest: {
-					name: "OneQ",
-					short_name: "OneQ",
+					name: "Yantra",
+					short_name: "Yantra",
 					start_url: "/",
 					display: "standalone",
 					background_color: "#ffffff",

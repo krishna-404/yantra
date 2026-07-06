@@ -221,13 +221,13 @@ export const PwaInstallSheet = () => {
 							<Box
 								component="img"
 								src="/apple-touch-icon.png"
-								alt="OneQ"
+								alt="Yantra"
 								sx={{ width: "100%", height: "100%", objectFit: "cover" }}
 							/>
 						</Box>
 						<Box sx={{ flexGrow: 1, minWidth: 0 }}>
 							<Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-								Install OneQ
+								Install Yantra
 							</Typography>
 							<Typography variant="body2" color="text.secondary">
 								Scheduled Prompt & Journal
@@ -238,7 +238,7 @@ export const PwaInstallSheet = () => {
 					{showIosGuide ? (
 						<Stack spacing={1.25}>
 							<Typography variant="body2" color="text.secondary">
-								Add OneQ to your home screen for the best experience.
+								Add Yantra to your home screen for the best experience.
 							</Typography>
 							{iosSteps.map((step) => (
 								<Stack
