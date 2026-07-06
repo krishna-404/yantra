@@ -16,54 +16,6 @@ export const userDeletedEventDef = defineEvent({
 	}),
 });
 
-/**
- * Example on-demand notification task. Triggered explicitly by application
- * code via `tbus.send(userReminderTaskDef.from(...))` — no automatic scheduler.
- */
-export const userReminderTaskDef = defineTask({
-	task_name: "send_user_reminder",
-	schema: Type.Object({
-		userId: Type.String({ format: "uuid" }),
-		email: Type.String({ format: "email" }),
-		name: Type.String(),
-		reminderTime: Type.String(),
-	}),
-	config: {
-		retryLimit: 3,
-		retryDelay: 60, // 60s, then exponential
-		retryBackoff: true,
-		expireInSeconds: 120,
-		keepInSeconds: 604800, // 7 days
-	},
-});
-
-/**
- * Fan-out task for the journal-entry-created workflow. Sent once per
- * newly-created entry from `journalEntries.create` and from the tail of
- * `pushJournalEntryCreatesService` (for offline-created entries). The
- * handler queries `team_members` for the entry's team, excludes the
- * author, and triggers the `journal-entry-created` Novu workflow per
- * remaining subscriber. Retries via pg-tbus so a Novu blip doesn't
- * drop the notification silently.
- */
-export const journalEntryCreatedFanoutTaskDef = defineTask({
-	task_name: "journal_entry_created_fanout",
-	schema: Type.Object({
-		entryId: Type.String(),
-		teamId: Type.String(),
-		authorUserId: Type.String({ format: "uuid" }),
-		authorName: Type.String(),
-		contentPreview: Type.String(),
-	}),
-	config: {
-		retryLimit: 3,
-		retryDelay: 60,
-		retryBackoff: true,
-		expireInSeconds: 120,
-		keepInSeconds: 604800, // 7 days
-	},
-});
-
 // Triggered when API usage reaches the 90% threshold.
 export const subscriptionAlertWebhookTaskDef = defineTask({
 	task_name: "subscription.alert_webhook",

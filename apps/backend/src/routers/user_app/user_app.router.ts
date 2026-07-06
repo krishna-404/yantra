@@ -1,8 +1,6 @@
 import { cdnRouter } from "@backend/modules/cdn/cdn.user_app.router";
 import { filesRouter } from "@backend/modules/files/files.router";
-import { journalEntriesRouter } from "@backend/modules/journal-entries/journal-entries.router";
 import { notificationsRouter } from "@backend/modules/notifications/notifications.router";
-import { promptsRouter } from "@backend/modules/prompts/prompts.router";
 import { teamsAppRouter } from "@backend/modules/teams/teams_app.router";
 import { meRouter } from "@backend/modules/users/me.user_app.router";
 import { rpcPublicProcedure } from "@backend/procedures/public.procedure";
@@ -40,10 +38,8 @@ export const userAppRouter = {
 	cdn: cdnRouter,
 	files: filesRouter,
 	health: healthCheck,
-	journalEntries: journalEntriesRouter,
 	me: meRouter,
 	notifications: notificationsRouter,
-	prompts: promptsRouter,
 	teams: teamsAppRouter,
 };
 
