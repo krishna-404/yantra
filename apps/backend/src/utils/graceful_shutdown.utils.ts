@@ -1,6 +1,5 @@
 import type { Server } from "node:http";
 import { stopReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
-import { stopReminderDispatchCron } from "@backend/cron_jobs/reminder_dispatch.cron";
 import { db } from "@backend/db/db";
 import { getTbusStartPromise } from "@backend/events/events.utils";
 import { tbus } from "@backend/events/tbus";
@@ -98,7 +97,6 @@ export const handleServerClose = (server: Server) => {
 				]);
 			}
 
-			stopReminderDispatchCron();
 			stopReconcileFcmTokensCron();
 
 			await tbus.stop().catch((error) => {
