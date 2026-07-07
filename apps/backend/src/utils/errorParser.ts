@@ -111,10 +111,13 @@ interface OrpcValidationCarrier {
 function extractOrpcValidationError(
 	error: unknown,
 ): OrpcValidationCarrier | null {
+	// oRPC's ValidationError never sets `this.name`, so `.name` is "Error" —
+	// match on constructor name as well or every input error 500s as uncaught.
 	const isCarrier = (e: unknown): e is OrpcValidationCarrier =>
 		!!e &&
 		typeof e === "object" &&
-		(e as { name?: string }).name === "ValidationError" &&
+		((e as { name?: string }).name === "ValidationError" ||
+			(e as object).constructor?.name === "ValidationError") &&
 		Array.isArray((e as { issues?: unknown }).issues);
 	if (isCarrier(error)) return error;
 	const cause = (error as { cause?: unknown }).cause;
@@ -331,6 +334,13 @@ export function handleBoundaryError(error: unknown, handler: string) {
 	// to be recovered by trace_id-grepping the pino logs.
 	const pg = pgContext(cause as PgError);
 	const context = pg ? { pg } : undefined;
+
+	// oRPC's ValidationError carries the raw request input on `.data` — that
+	// can include secrets (e.g. a PAT in the add-project form). Never let it
+	// reach logs or Sentry.
+	if (domain.code === "VALIDATION_ERROR" && "data" in cause) {
+		(cause as { data?: unknown }).data = "[redacted: request input]";
+	}
 
 	captureBackendException(err, { domain, tags: { handler }, context });
 	logger.error(
