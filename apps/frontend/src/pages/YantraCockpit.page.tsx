@@ -283,21 +283,49 @@ function ProjectsCard({
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),
 		});
-		if (!res.ok) throw new Error(String(res.status));
+		if (!res.ok) {
+			// oRPC error body: { message, data: { fieldErrors?: {field: [msg]} } }.
+			// Surface the specific field message, not just a status code.
+			let detail = `HTTP ${res.status}`;
+			try {
+				const err = (await res.json()) as {
+					message?: string;
+					data?: { fieldErrors?: Record<string, string[]> };
+				};
+				const fieldErrors = err.data?.fieldErrors ?? {};
+				const firstField = Object.entries(fieldErrors)[0];
+				detail = firstField
+					? `${firstField[0]}: ${firstField[1].join("; ")}`
+					: (err.message ?? detail);
+			} catch {
+				// Non-JSON body (proxy error page) — keep the status code.
+			}
+			throw new Error(detail);
+		}
 	};
 
 	const handleAdd = async () => {
 		setBusy(true);
 		setMsg(null);
+		// Accept a pasted GitHub URL and reduce it to owner/name.
+		const normalizedRepo = repo
+			.trim()
+			.replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+			.replace(/\.git$/i, "")
+			.replace(/\/+$/, "");
 		try {
-			await post("/yantra/projects", { repo, baseBranch, ghToken: token });
+			await post("/yantra/projects", {
+				repo: normalizedRepo,
+				baseBranch,
+				ghToken: token,
+			});
 			setRepo("");
 			setToken("");
 			setMsg("Project added — the harness tick picks it up within 10 minutes.");
 			await onChanged();
 		} catch (err) {
 			setMsg(
-				`Couldn't add project (${err instanceof Error ? err.message : "error"}). Check the repo format and that the token is a full PAT.`,
+				`Couldn't add project — ${err instanceof Error ? err.message : "unknown error"}`,
 			);
 		} finally {
 			setBusy(false);
@@ -322,12 +350,14 @@ function ProjectsCard({
 	return (
 		<Card sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
 			<Typography variant="h6" sx={{ fontWeight: 700 }}>
-				Projects
+				Connected repos
 			</Typography>
 			<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-				Each project carries its own GitHub token, encrypted in the app's
-				database — nothing lives in server env. The shadow tick works every
-				enabled project.
+				A project can connect multiple GitHub repos; each connection is one
+				repo + base branch + its own token, encrypted in the app's database —
+				nothing lives in server env. The harness tick works every enabled
+				connection. (Today these belong to the super-admin's own project;
+				team-scoped projects come with multi-tenancy in Phase 4.)
 			</Typography>
 
 			<Stack spacing={1} sx={{ mb: 2 }}>
@@ -394,6 +424,18 @@ function ProjectsCard({
 					Add project
 				</Button>
 			</Stack>
+			<Typography
+				variant="caption"
+				color="text.secondary"
+				sx={{ display: "block", mt: 1.5 }}
+			>
+				Token: use a fine-grained PAT scoped to just this repo, with
+				repository permissions <b>Contents</b>, <b>Issues</b> and{" "}
+				<b>Pull requests</b> set to read &amp; write, and <b>Variables</b>{" "}
+				read-only (the kill switch is an Actions variable — without it the
+				harness fails closed and stays idle). A classic token with{" "}
+				<code>repo</code> scope also works but grants far more than needed.
+			</Typography>
 			{msg && (
 				<Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
 					{msg}
