@@ -27,7 +27,7 @@ test.describe('Authentication', () => {
     await page.locator('text=Continue with Google').click();
 
     // Wait for redirect
-    await page.waitForURL(/\/(dashboard|journal-entries\/new)/);
+    await page.waitForURL(/\/dashboard/);
 
     // Verify user is authenticated by checking for user menu
     await expect(page.locator('[aria-label*="User menu"]')).toBeVisible();

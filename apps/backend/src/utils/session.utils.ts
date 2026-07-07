@@ -63,7 +63,6 @@ const transformUserData = (
 		image: rawUser.image ?? null,
 		themeSetting: rawUser.themeSetting as "dark" | "light" | "system",
 		timezone: rawUser.timezone,
-		journalReminderTimes: rawUser.journalReminderTimes,
 		phoneNumber: rawUser.phoneNumber ?? null,
 		phoneNumberVerified: rawUser.phoneNumberVerified ?? false,
 		activeTeamAppId: rawUser.activeTeamAppId ?? null,

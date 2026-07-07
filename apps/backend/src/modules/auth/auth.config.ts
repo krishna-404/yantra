@@ -3,10 +3,7 @@ import { env, isDev, isProd, isTest } from "@backend/configs/env.config";
 import { db } from "@backend/db/db";
 import { logger } from "@backend/utils/logger.utils";
 import { themeSettingZod } from "@connected-repo/zod-schemas/enums.zod";
-import {
-	uniqueTimeArrayZod,
-	zTimezone,
-} from "@connected-repo/zod-schemas/zod_utils";
+import { zTimezone } from "@connected-repo/zod-schemas/zod_utils";
 import { betterAuth } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
 import { bearer, phoneNumber } from "better-auth/plugins";
@@ -308,16 +305,6 @@ export const auth = betterAuth({
 				validator: {
 					input: themeSettingZod,
 					output: themeSettingZod,
-				},
-			},
-			journalReminderTimes: {
-				type: "string[]",
-				required: true,
-				defaultValue: [],
-				input: true,
-				validator: {
-					input: uniqueTimeArrayZod,
-					output: uniqueTimeArrayZod,
 				},
 			},
 			activeTeamAppId: {

@@ -25,6 +25,43 @@ Parallel groups: **A (state) → B (workers) → cutover**, with **C (surface) �
 
 ---
 
+## §0 — North star: the app builds itself (tenant-zero)
+
+The defining outcome of this phase is not "a nicer harness." It is **self-hosting**:
+`apps/yantra`'s first and only project — its *tenant-zero* — is **this repo's own
+`staging` branch**. After cutover (H9), the loop that improves Yantra runs *inside the
+Yantra app*, driving `staging` from within, with the v0 bash executor **fully retired**.
+The operator's stated first task once the app is live: set up `staging` as tenant-zero
+and work on it from the app itself.
+
+Why this framing matters for how the phase is built:
+
+- **The app is its own first customer.** Every `apps/yantra` capability (claim, advise,
+  execute, grade, dream, rails, canary) must work end-to-end against `krishna-404/yantra`
+  @ `staging` — the same branch the loop has been improving since Phase 0 — not just
+  against fixtures. Fixtures prove correctness; tenant-zero proves it *in production on
+  itself*.
+- **v0 retirement is the completion condition, not a nice-to-have.** The phase is not
+  done until `systemctl disable`'d timers, `ops/yantra/` moved to `attic/`, and
+  `apps/yantra` is the sole driver of `staging`. The last thing the v0 loop ever does is
+  help build the successor that replaces it (expect the final `apps/yantra` PRs to be
+  human-authored/-merged if v0 is already mid-retirement — see H9).
+- **Tenant-zero is the capability proof for the product.** A harness that can reliably
+  self-improve one repo (its own) is the seed of a harness that improves *other* repos.
+  Generalizing tenant-zero → multi-tenant is Phase 4 (`05-phase-4-expansion.md`); do not
+  build multi-tenant abstractions here — build the single-tenant self-hosting loop well,
+  and keep the tenant identifier (`repo`, `base_branch`) a first-class column in the H1
+  state tables so the later generalization is a widening, not a rewrite.
+
+**Reconciling with the self-modification firewall (below):** the firewall governs the
+*build* — while `apps/yantra` is being written, v1 exercises a **scratch fixture repo**,
+never the real one, so a half-built harness cannot corrupt the repo it lives in.
+Tenant-zero is the *operating state after H9 cutover* — once parity + shadow prove v1
+safe, its real tenant becomes `krishna-404/yantra` @ `staging`. Firewall = scaffolding;
+tenant-zero = the finished building running on its own power.
+
+---
+
 ## Group 2.A — State model (deps: none) — mostly T2
 
 | ID | Task | Tier | Success criteria |
@@ -63,7 +100,9 @@ Parallel groups: **A (state) → B (workers) → cutover**, with **C (surface) �
    systemd units; Phase 2 exit.
 
 **Exit criteria:** cutover complete + parity suite green in CI permanently + v0 retired
-+ a full week of telemetry continuity across the port (H3 verified).
+(timers disabled, `ops/yantra/` → `attic/`) + `apps/yantra` is the **sole driver of
+`staging` (tenant-zero live)** + a full week of telemetry continuity across the port
+(H3 verified).
 
 ## Test cases for the phase itself
 

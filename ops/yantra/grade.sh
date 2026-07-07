@@ -188,7 +188,12 @@ $(jq . <<<"$verdict_json")
 			if [[ -z "$rail_fail" ]]; then
 				gh pr merge "$pr" --repo "$REPO" --squash
 				record_automerge "$pr" "$sha"
-				log INFO "grade PASS pr=#$pr T0 — auto-merge enabled run=$run"
+				# PRs target the integration branch (staging), NOT the repo's default
+				# branch, so GitHub never auto-closes the "Closes #N" issue on merge.
+				# Close it explicitly — otherwise the done-but-open issue lingers in
+				# `spec:ready`/deps and blocks every dependent (deps_open) forever.
+				[[ "$issue" != "0" ]] && gh issue close "$issue" --repo "$REPO" --reason completed 2>/dev/null || true
+				log INFO "grade PASS pr=#$pr T0 — auto-merged + issue #$issue closed run=$run"
 				local outcome=grade_pass_first_try
 				if (( fail_count > 0 )); then outcome=grade_pass_retry; fi
 				telemetry "$run" "$turn" "$issue" grade "$model" "$tier_confirmed" unknown "$started" "$outcome" "$pr" true true "$pv"

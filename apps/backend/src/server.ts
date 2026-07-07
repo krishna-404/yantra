@@ -14,7 +14,6 @@ import {
 	isTest,
 } from "@backend/configs/env.config";
 import { startReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
-import { startReminderDispatchCron } from "@backend/cron_jobs/reminder_dispatch.cron";
 import { startSilentSyncDispatchCron } from "@backend/cron_jobs/silent_sync_dispatch.cron";
 import { startEventBus } from "@backend/events/events.utils";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
@@ -129,17 +128,14 @@ try {
 	});
 
 	startEventBus();
-	// Both crons feed Novu — the reminder cron ends in a triggerNotification()
-	// no-op when NOVU_SECRET_KEY is unset, and the reconcile cron hits Novu's
-	// API on every user. Without the key, both would just burn CPU on their
-	// scans. Gate the whole boot on the key so unconfigured environments
-	// (CI, first-time dev) stay quiet.
+	// The reconcile cron hits Novu's API on every user; without the key it would
+	// just burn CPU on its scan. Gate the whole boot on the key so unconfigured
+	// environments (CI, first-time dev) stay quiet.
 	if (env.NOVU_SECRET_KEY) {
-		startReminderDispatchCron();
 		startReconcileFcmTokensCron();
 		syncNovuWorkflowsInBackground();
 	} else {
-		logger.info("Novu not configured; reminder/reconcile crons skipped");
+		logger.info("Novu not configured; reconcile cron skipped");
 	}
 
 	// Silent-sync push runs independently of Novu — it uses firebase-admin

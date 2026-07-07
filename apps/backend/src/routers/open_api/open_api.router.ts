@@ -1,5 +1,4 @@
 import { db } from "@backend/db/db";
-import { journalEntriesOpenApiRouter } from "@backend/modules/journal-entries/journal-entries.openapi.router";
 import { subscriptionOpenApiRouter } from "@backend/modules/subscriptions/subscription.router";
 import { openApiPublicProcedure } from "@backend/procedures/open_api_public.procedure";
 import { zTimezone } from "@connected-repo/zod-schemas/zod_utils";
@@ -47,7 +46,6 @@ const healthCheck = openApiPublicProcedure
 export const openApiRouter = {
 	health: healthCheck,
 	v1: {
-		"journal-entries": journalEntriesOpenApiRouter,
 		subscriptions: subscriptionOpenApiRouter,
 		team: teamApiRouter,
 	},

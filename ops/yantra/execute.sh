@@ -88,10 +88,30 @@ fi
 
 yarn install --frozen-lockfile >/workspace/selfcheck.log 2>&1
 
+# Build the workspace packages (zod-schemas, ui-mui) BEFORE the agent runs and before
+# the self-check. Backend/frontend type-check resolves `@connected-repo/*` through each
+# package's built `dist/` (package `exports`), so a fresh container with no `dist/`
+# throws phantom `Cannot find module '@connected-repo/zod-schemas/…'` errors. Executors
+# were mis-diagnosing that as a source bug and editing out-of-scope package files
+# (parked #11 twice this way). CI builds the packages first; the container must too.
+# App builds (frontend/backend) are intentionally excluded — they need env the container
+# lacks and would abort here; only the leaf packages are needed for type resolution.
+# (See .brain/conventions.md "Environment gates vs. regressions".)
+yarn build --filter='./packages/*' >>/workspace/selfcheck.log 2>&1 || \
+	echo "WARN: package pre-build returned non-zero; check-types may false-red" >>/workspace/selfcheck.log
+
 claude -p "$(cat /workspace/prompt.md)" --model "$MODEL" --dangerously-skip-permissions
 
 selfcheck() {
-	yarn lint && yarn check-types && yarn test:db:setup && yarn test:run
+	# Mirror the CI gates so the executor catches failures locally (in the one fix
+	# pass below) instead of pushing red and relying on the grade round-trip.
+	# `knip` matters for strip/deletion work: removing a module orphans files/deps
+	# that live outside it, and knip's error-level rules (files/dependencies/
+	# unlisted) fail CI. Without knip here the executor can't see those orphans
+	# before pushing, and the grade-FAIL retry only reports "CI red" without the
+	# specifics — which wedges the turn (bit #44). knip's pre-existing `warn`
+	# backlog (exports/types) does not fail, so this only trips on NEW rot.
+	yarn lint && yarn check-types && yarn knip && yarn test:db:setup && yarn test:run
 }
 if ! selfcheck >>/workspace/selfcheck.log 2>&1; then
 	echo "--- self-check failed; giving the agent one fix pass ---" >>/workspace/selfcheck.log

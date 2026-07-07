@@ -8,14 +8,13 @@ main thread never spawns workers elsewhere.
 Stateful. Owns the per-user Dexie DB and the sync engine.
 
 - **DB**: `initDb(userId)` opens `dbNameFor(userId)` and drops any other user's
-  DB on this device. Module DB adapters (`journal-entries`, `prompts`,
-  `teamsApp`, `teamMembers`, `files`, `syncMetadata`) throw until this
-  completes.
+  DB on this device. Module DB adapters (`teamsApp`, `teamMembers`, `files`,
+  `syncMetadata`, plus any registered module) throw until this completes.
 - **SyncOrchestrator** (`sync/sync.orchestrator.ts`): pull-delta protocol per
   table with a wave-1 anchor:
-  1. `teamsApp` (anchor — mints `topLevelSyncedAt`) →
-  2. `teamMembers` → `prompts` → `journalEntries` → `files` (pull pipeline).
-  3. Push pipeline (parallel with pull): `pushJournalEntryCreates` then
+  1. `teamsApp` (anchor — mints `topLevelSyncedAt`) → remaining registered
+     tables (see `TABLES` in `sync.orchestrator.ts`) → `files` (pull pipeline).
+  2. `runPushPipeline` (parallel with pull): per-module push, then
      `pushFileCdnUpdates`.
   Cursors are per-`(table, teamId)`. Cycles capture `expectedUserId` +
   `expectedTeamId` and abort writes if either flips mid-cycle to protect the

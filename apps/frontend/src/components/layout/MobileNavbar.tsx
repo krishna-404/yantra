@@ -80,7 +80,7 @@ export const MobileNavbar = () => {
 								letterSpacing: -0.5,
 							}}
 						>
-							OneQ
+							Yantra
 						</Typography>
 					</Box>
 
