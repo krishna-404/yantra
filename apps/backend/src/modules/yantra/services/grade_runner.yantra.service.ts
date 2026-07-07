@@ -60,10 +60,10 @@ interface GradeVerdict {
 	failures?: string[];
 }
 
-const tierRank = (t: string): number =>
+export const tierRank = (t: string): number =>
 	({ T0: 0, T1: 1, T2: 2, T3: 3 })[t] ?? 3;
 
-const linkedIssue = (body: string | null): number => {
+export const linkedIssue = (body: string | null): number => {
 	const m = body?.match(/closes #(\d+)/i);
 	return m?.[1] ? Number(m[1]) : 0;
 };
