@@ -1,0 +1,15 @@
+# Rail-protected paths (loop-protocol §6 R2): any PR touching these requires
+# the repo owner's review, regardless of tier labels — the file-level backstop
+# behind grade.sh's rails. Order matters: the LAST matching pattern wins, so
+# the .brain/inbox exception (a pattern with no owner clears the requirement)
+# must come after the .brain rule.
+
+/ops/yantra/    @krishna-404
+/.github/       @krishna-404
+/LICENSE        @krishna-404
+/apps/yantra/   @krishna-404
+
+/.brain/        @krishna-404
+# Inbox stubs are the ONE .brain path agents may write freely (lessons landing
+# zone, promoted to canon only by nightly dream / human review).
+/.brain/inbox/
