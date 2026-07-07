@@ -3,6 +3,7 @@ import {
 	listFeatureFlags,
 	setFeatureFlag,
 } from "@backend/modules/system/services/feature_flags.service";
+import { yantraRouter } from "@backend/modules/yantra/yantra.router";
 import { rpcSuperAdminProcedure } from "@backend/procedures/super_admin.procedure";
 import {
 	featureFlagDeleteInputZod,
@@ -96,6 +97,7 @@ export const superAdminRouter = {
 	listFlags,
 	setFlag,
 	deleteFlag,
+	yantra: yantraRouter,
 };
 
 export type SuperAdminRouter = RouterClient<typeof superAdminRouter>;
