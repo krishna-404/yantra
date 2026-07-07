@@ -96,6 +96,9 @@ const envSchema = z.object({
 	// Comma-separated list of emails/phones with super-admin access (see rpcSuperAdminProcedure).
 	SUPER_ADMIN_EMAILS: optionalString,
 	SUPER_ADMIN_PHONE_NUMBERS: optionalString,
+	// GitHub PAT for the yantra harness (H4 shadow tick reads repo state).
+	// Absent ⇒ the shadow tick self-disables; nothing else depends on it.
+	YANTRA_GH_TOKEN: optionalString,
 	VITE_API_URL: z.url(),
 	WEBAPP_URL: z.url(),
 	S3_ENDPOINT: z.url(),
