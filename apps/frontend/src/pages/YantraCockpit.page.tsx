@@ -548,8 +548,11 @@ function RunnerInfraCard() {
 						</Typography>
 					) : (
 						<Typography variant="body2" sx={{ color: "error.main" }}>
-							not reachable — check the /var/run/docker.sock mount on the
-							backend service and redeploy
+							not reachable
+							{docker.error ? ` (${docker.error})` : ""} — if the
+							/var/run/docker.sock mount is in place, this is usually the
+							socket's group permissions; the latest backend image fixes that
+							at boot, so redeploy after this change ships
 						</Typography>
 					)}
 				</Stack>
