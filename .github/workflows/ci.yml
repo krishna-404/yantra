@@ -156,6 +156,7 @@ jobs:
           VITE_OTEL_SERVICE_NAME=connected-repo-backend
           VITE_API_URL=http://localhost:3001
           VITE_USER_APP_URL=http://localhost:5174
+          VITE_TEST_PASSWORD=SecureTestPassword123!@#
           EOF
       # Provision the test DB (drop → create → migrate → seed) — same step the tests job uses.
       - run: yarn test:db:setup
