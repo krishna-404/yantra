@@ -1,5 +1,5 @@
-import { env } from "@backend/configs/env.config";
 import { db } from "@backend/db/db";
+import { listEnabledProjectsWithTokens } from "@backend/modules/yantra/services/projects.yantra.service";
 import {
 	canClaim,
 	STALE_CLAIM_MS,
@@ -10,12 +10,14 @@ import { ulid } from "ulid";
 /**
  * H4 (shadow mode) — the app's own tick, DECIDING but not ACTING.
  *
- * Every run reads live GitHub state, runs the same §2.1 claim logic as
- * ops/yantra/loop-tick.sh through the H2 machine's canClaim, and records the
- * decision it WOULD have made as a yantra_telemetry row (role "shadow_tick",
- * lane "shadow"). Zero writes to GitHub — the v0 loop keeps flying while this
- * builds the H9 parity record. Cutover flips shadow → live by swapping the
- * decision log for the H5 role runners.
+ * Every run reads live GitHub state for each enabled yantra_project (D23 —
+ * credentials come from the project row, decrypted just-in-time; nothing in
+ * env), runs the same §2.1 claim logic as ops/yantra/loop-tick.sh through the
+ * H2 machine's canClaim, and records the decision it WOULD have made as a
+ * yantra_telemetry row (role "shadow_tick", lane "shadow") tagged with the
+ * project's repo + baseBranch. Zero writes to GitHub — the v0 loop keeps
+ * flying while this builds the H9 parity record. Cutover flips shadow → live
+ * by swapping the decision log for the H5 role runners.
  *
  * Known, documented divergences from v0 (compared at H9):
  * - R3 count comes from a GitHub search over recently-merged tier:T0 PRs,
@@ -23,7 +25,6 @@ import { ulid } from "ulid";
  * - Claim age comes from the latest "🤖 yantra claim" comment, same as v0.
  */
 
-export const YANTRA_REPO = "krishna-404/yantra";
 const API = "https://api.github.com";
 
 interface GhIssue {
@@ -119,12 +120,15 @@ export const parseDependsOn = (body: string | null): number[] => {
 
 const isoHourAgo = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-const gatherInputs = async (token: string): Promise<ShadowInputs> => {
+const gatherInputs = async (
+	repo: string,
+	token: string,
+): Promise<ShadowInputs> => {
 	// Kill switch fails CLOSED, exactly like lib.sh kill_switch_on.
 	let killSwitchOn = true;
 	try {
 		const v = await gh<{ value: string }>(
-			`/repos/${YANTRA_REPO}/actions/variables/YANTRA_KILL`,
+			`/repos/${repo}/actions/variables/YANTRA_KILL`,
 			token,
 		);
 		killSwitchOn = v.value === "true";
@@ -134,11 +138,11 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 
 	const [workingRaw, readyRaw] = await Promise.all([
 		gh<GhIssue[]>(
-			`/repos/${YANTRA_REPO}/issues?labels=agent:working&state=open&per_page=100`,
+			`/repos/${repo}/issues?labels=agent:working&state=open&per_page=100`,
 			token,
 		),
 		gh<GhIssue[]>(
-			`/repos/${YANTRA_REPO}/issues?labels=spec:ready&state=open&per_page=100`,
+			`/repos/${repo}/issues?labels=spec:ready&state=open&per_page=100`,
 			token,
 		),
 	]);
@@ -157,7 +161,7 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 			let hasOpenPr = false;
 			try {
 				const comments = await gh<{ body: string; created_at: string }[]>(
-					`/repos/${YANTRA_REPO}/issues/${issue.number}/comments?per_page=100`,
+					`/repos/${repo}/issues/${issue.number}/comments?per_page=100`,
 					token,
 				);
 				const claims = comments.filter((c) => c.body.includes("yantra claim"));
@@ -165,14 +169,14 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 				if (last) claimAgeMs = Date.now() - new Date(last.created_at).getTime();
 				const pr = await gh<{ total_count: number }>(
 					`/search/issues?q=${encodeURIComponent(
-						`repo:${YANTRA_REPO} is:pr is:open "Closes #${issue.number}" in:body`,
+						`repo:${repo} is:pr is:open "Closes #${issue.number}" in:body`,
 					)}`,
 					token,
 				);
 				hasOpenPr = pr.total_count > 0;
 			} catch (err) {
 				logger.warn(
-					{ err, issue: issue.number },
+					{ err, repo, issue: issue.number },
 					"shadow tick: working-issue probe failed",
 				);
 			}
@@ -187,7 +191,7 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 			for (const dep of deps) {
 				try {
 					const d = await gh<{ state: string }>(
-						`/repos/${YANTRA_REPO}/issues/${dep}`,
+						`/repos/${repo}/issues/${dep}`,
 						token,
 					);
 					if (d.state === "open") openDeps.push(dep);
@@ -204,7 +208,7 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 	try {
 		const merged = await gh<{ total_count: number }>(
 			`/search/issues?q=${encodeURIComponent(
-				`repo:${YANTRA_REPO} is:pr is:merged label:tier:T0 merged:>${isoHourAgo()}`,
+				`repo:${repo} is:pr is:merged label:tier:T0 merged:>${isoHourAgo()}`,
 			)}`,
 			token,
 		);
@@ -216,19 +220,17 @@ const gatherInputs = async (token: string): Promise<ShadowInputs> => {
 	return { killSwitchOn, working, ready, automergesLastHour };
 };
 
-/** One shadow tick: gather → decide → record. Never writes to GitHub. */
-export const runShadowTick = async (): Promise<ShadowDecision | null> => {
-	const token = env.YANTRA_GH_TOKEN;
-	if (!token) return null;
-
-	const started = new Date();
-	const inputs = await gatherInputs(token);
-	const decision = decideShadowTick(inputs);
+const recordDecision = async (
+	project: { repo: string; baseBranch: string },
+	decision: ShadowDecision,
+	started: Date,
+): Promise<void> => {
 	const id = ulid();
-
 	await db.yantraTelemetry.create({
 		run: id,
 		turn: id,
+		repo: project.repo,
+		baseBranch: project.baseBranch,
 		issue: decision.wouldClaim ?? 0,
 		role: "shadow_tick",
 		lane: "shadow",
@@ -250,17 +252,54 @@ export const runShadowTick = async (): Promise<ShadowDecision | null> => {
 		tokensEst: 0,
 		costUsd: 0,
 	});
+};
 
-	logger.info(
-		{
-			...decision,
-			inputs: {
-				...inputs,
-				ready: inputs.ready.length,
-				working: inputs.working.length,
-			},
-		},
-		"yantra shadow tick",
-	);
-	return decision;
+export interface ProjectShadowResult {
+	repo: string;
+	baseBranch: string;
+	decision: ShadowDecision;
+}
+
+/**
+ * One shadow tick across every enabled project: gather → decide → record,
+ * per project row. Never writes to GitHub. No projects ⇒ quiet no-op. One
+ * project failing (revoked PAT, GitHub down) doesn't stop the others.
+ */
+export const runShadowTick = async (): Promise<ProjectShadowResult[]> => {
+	const projects = await listEnabledProjectsWithTokens();
+	if (projects.length === 0) return [];
+
+	const results: ProjectShadowResult[] = [];
+	for (const project of projects) {
+		const started = new Date();
+		try {
+			const inputs = await gatherInputs(project.repo, project.ghToken);
+			const decision = decideShadowTick(inputs);
+			await recordDecision(project, decision, started);
+			logger.info(
+				{
+					repo: project.repo,
+					baseBranch: project.baseBranch,
+					...decision,
+					inputs: {
+						...inputs,
+						ready: inputs.ready.length,
+						working: inputs.working.length,
+					},
+				},
+				"yantra shadow tick",
+			);
+			results.push({
+				repo: project.repo,
+				baseBranch: project.baseBranch,
+				decision,
+			});
+		} catch (err) {
+			logger.error(
+				{ err, repo: project.repo },
+				"yantra shadow tick failed for project",
+			);
+		}
+	}
+	return results;
 };

@@ -20,6 +20,15 @@ import { useCallback, useEffect, useState } from "react";
 
 const base = `${env.VITE_API_URL || window.location.origin}/super-admin`;
 
+interface Project {
+	id: string;
+	repo: string;
+	baseBranch: string;
+	enabled: boolean;
+	ghTokenHint: string;
+	createdAt: number;
+}
+
 interface Summary {
 	totalRuns: number;
 	merges: number;
@@ -53,6 +62,7 @@ const get = async <T,>(path: string): Promise<T> => {
 export default function YantraCockpitPage() {
 	const [summary, setSummary] = useState<Summary | null>(null);
 	const [runs, setRuns] = useState<RunRow[]>([]);
+	const [projects, setProjects] = useState<Project[]>([]);
 	const [denied, setDenied] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [jsonl, setJsonl] = useState("");
@@ -61,12 +71,14 @@ export default function YantraCockpitPage() {
 
 	const refresh = useCallback(async () => {
 		try {
-			const [s, r] = await Promise.all([
+			const [s, r, p] = await Promise.all([
 				get<Summary>("/yantra/summary"),
 				get<{ rows: RunRow[] }>("/yantra/runs?limit=50"),
+				get<{ projects: Project[] }>("/yantra/projects"),
 			]);
 			setSummary(s);
 			setRuns(r.rows);
+			setProjects(p.projects);
 			setDenied(false);
 			setError(null);
 		} catch (err) {
@@ -140,6 +152,8 @@ export default function YantraCockpitPage() {
 				</Box>
 
 				{error && <Alert severity="error">{error}</Alert>}
+
+				<ProjectsCard projects={projects} onChanged={refresh} />
 
 				<Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
 					<StatTile label="Total runs" value={summary?.totalRuns ?? "—"} />
@@ -241,6 +255,151 @@ export default function YantraCockpitPage() {
 				</Card>
 			</Stack>
 		</Container>
+	);
+}
+
+/**
+ * Projects (D23): a project = repo + base branch + its own GitHub PAT, stored
+ * encrypted in the app's DB — never in server env. The token is write-only:
+ * the API returns a last-4 hint, nothing more. Tenant-zero is this very repo.
+ */
+function ProjectsCard({
+	projects,
+	onChanged,
+}: {
+	projects: Project[];
+	onChanged: () => Promise<void>;
+}) {
+	const [repo, setRepo] = useState("");
+	const [baseBranch, setBaseBranch] = useState("staging");
+	const [token, setToken] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [msg, setMsg] = useState<string | null>(null);
+
+	const post = async (path: string, body: unknown) => {
+		const res = await fetch(`${base}${path}`, {
+			method: "POST",
+			credentials: "include",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (!res.ok) throw new Error(String(res.status));
+	};
+
+	const handleAdd = async () => {
+		setBusy(true);
+		setMsg(null);
+		try {
+			await post("/yantra/projects", { repo, baseBranch, ghToken: token });
+			setRepo("");
+			setToken("");
+			setMsg("Project added — the harness tick picks it up within 10 minutes.");
+			await onChanged();
+		} catch (err) {
+			setMsg(
+				`Couldn't add project (${err instanceof Error ? err.message : "error"}). Check the repo format and that the token is a full PAT.`,
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const handleToggle = async (p: Project) => {
+		setBusy(true);
+		try {
+			await post("/yantra/projects/set-enabled", {
+				id: p.id,
+				enabled: !p.enabled,
+			});
+			await onChanged();
+		} catch {
+			setMsg("Couldn't update the project.");
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<Card sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
+			<Typography variant="h6" sx={{ fontWeight: 700 }}>
+				Projects
+			</Typography>
+			<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+				Each project carries its own GitHub token, encrypted in the app's
+				database — nothing lives in server env. The shadow tick works every
+				enabled project.
+			</Typography>
+
+			<Stack spacing={1} sx={{ mb: 2 }}>
+				{projects.map((p) => (
+					<Stack
+						key={p.id}
+						direction="row"
+						spacing={2}
+						alignItems="center"
+						justifyContent="space-between"
+						sx={{ py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}
+					>
+						<Box>
+							<Typography variant="body2" sx={{ fontWeight: 600 }}>
+								{p.repo} @ {p.baseBranch}
+							</Typography>
+							<Typography variant="caption" color="text.secondary">
+								token …{p.ghTokenHint || "????"} ·{" "}
+								{p.enabled ? "enabled" : "paused"}
+							</Typography>
+						</Box>
+						<Button size="small" disabled={busy} onClick={() => handleToggle(p)}>
+							{p.enabled ? "Pause" : "Enable"}
+						</Button>
+					</Stack>
+				))}
+				{projects.length === 0 && (
+					<Typography variant="body2" color="text.secondary">
+						No projects yet — add this repo as tenant-zero below.
+					</Typography>
+				)}
+			</Stack>
+
+			<Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+				<TextField
+					label="Repo (owner/name)"
+					size="small"
+					value={repo}
+					onChange={(e) => setRepo(e.target.value)}
+					placeholder="krishna-404/yantra"
+					sx={{ flex: 1 }}
+				/>
+				<TextField
+					label="Base branch"
+					size="small"
+					value={baseBranch}
+					onChange={(e) => setBaseBranch(e.target.value)}
+					sx={{ width: { md: 160 } }}
+				/>
+				<TextField
+					label="GitHub token"
+					size="small"
+					type="password"
+					value={token}
+					onChange={(e) => setToken(e.target.value)}
+					placeholder="ghp_…"
+					sx={{ flex: 1 }}
+				/>
+				<Button
+					variant="contained"
+					onClick={handleAdd}
+					disabled={busy || !repo.trim() || !token.trim()}
+				>
+					Add project
+				</Button>
+			</Stack>
+			{msg && (
+				<Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+					{msg}
+				</Typography>
+			)}
+		</Card>
 	);
 }
 

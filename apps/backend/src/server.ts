@@ -145,8 +145,9 @@ try {
 	startSilentSyncDispatchCron();
 
 	// H4 shadow mode: the app decides what the harness WOULD do each tick and
-	// records it (parity record for the v0→v1 cutover). Self-disables when
-	// YANTRA_GH_TOKEN is unset; never writes to GitHub.
+	// records it (parity record for the v0→v1 cutover). Credentials are
+	// project-scoped in yantra_projects (D23); with no enabled projects the
+	// tick is a quiet no-op. Never writes to GitHub.
 	startYantraShadowTickCron();
 
 	handleServerClose(server);
