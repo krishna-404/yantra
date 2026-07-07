@@ -113,10 +113,12 @@ USER root
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Remove declaration files from migrations directory to prevent rake-db errors
 RUN find ./apps/backend/dist/db/migrations -type f \( -name "*.d.ts" -o -name "*.d.ts.map" \) -delete
-# Install curl for the healthcheck
-RUN apk add --no-cache curl
+# curl for the healthcheck; su-exec so the entrypoint can grant the nodejs user
+# access to the mounted docker socket (gid varies per host) and then drop root.
+RUN apk add --no-cache curl su-exec
 
-USER nodejs
+# Stay root into the entrypoint — it immediately re-execs itself as nodejs via
+# su-exec after fixing docker.sock group membership (see docker-entrypoint.sh).
 
 # Set environment variables
 ENV NODE_ENV=production
