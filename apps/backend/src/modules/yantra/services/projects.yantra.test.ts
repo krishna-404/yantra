@@ -23,7 +23,9 @@ const REPO = "test-owner/test-repo-projects";
 const TOKEN = "ghp_test_1234567890abcdefghijklmn_FAKE";
 
 afterAll(async () => {
-	await db.yantraProjects.where({ repo: { in: [REPO, `${REPO}-tick`, `${REPO}-rot`] } }).delete();
+	await db.yantraProjects
+		.where({ repo: { in: [REPO, `${REPO}-tick`, `${REPO}-rot`] } })
+		.delete();
 	await db.yantraAppSecrets.where({ key: "CLAUDE_CODE_OAUTH_TOKEN" }).delete();
 });
 
@@ -43,7 +45,10 @@ describe("yantra projects (D23)", () => {
 		expect(mine?.ghTokenHint).toBe(TOKEN.slice(-4));
 		expect(JSON.stringify(listed)).not.toContain(TOKEN);
 
-		const raw = await db.yantraProjects.findBy({ repo: REPO, baseBranch: "staging" });
+		const raw = await db.yantraProjects.findBy({
+			repo: REPO,
+			baseBranch: "staging",
+		});
 		expect(raw.ghTokenCiphertext).not.toContain(TOKEN);
 		expect(raw.ghTokenCiphertext.startsWith("v1:")).toBe(true);
 	});
