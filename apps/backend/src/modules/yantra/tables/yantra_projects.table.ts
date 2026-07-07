@@ -23,6 +23,9 @@ export class YantraProjectTable extends BaseTable {
 			// Last 4 chars of the PAT, for "ghp_…abcd" hints in the UI.
 			ghTokenHint: t.string(4).default(""),
 			enabled: t.boolean().default(true),
+			// "shadow" = decide + record only. "live" = act (claim, spawn advise/
+			// execute containers, open PRs). The H9 cutover lever, per project.
+			mode: t.string(10).default("shadow"),
 			...t.timestampsAsNumbers(),
 		}),
 		(t) => t.unique(["repo", "baseBranch"]),

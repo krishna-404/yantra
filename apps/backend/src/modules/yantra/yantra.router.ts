@@ -14,6 +14,7 @@ import {
 	listProjects,
 	rotateProjectToken,
 	setProjectEnabled,
+	setProjectMode,
 } from "@backend/modules/yantra/services/projects.yantra.service";
 import {
 	importTelemetryRows,
@@ -144,6 +145,7 @@ const projectViewZod = z.object({
 	enabled: z.boolean(),
 	// Last 4 chars of the PAT only — plaintext never crosses the API.
 	ghTokenHint: z.string(),
+	mode: z.string(),
 	createdAt: z.number(),
 });
 
@@ -178,6 +180,20 @@ const setProjectEnabledRoute = rpcSuperAdminProcedure
 	.output(z.object({ ok: z.boolean() }))
 	.handler(async ({ input }) => {
 		await setProjectEnabled(input.id, input.enabled);
+		return { ok: true };
+	});
+
+// The H9 cutover lever: live = the app claims issues and opens PRs itself.
+const setProjectModeRoute = rpcSuperAdminProcedure
+	.route({
+		method: "POST",
+		path: "/yantra/projects/set-mode",
+		tags: ["Yantra"],
+	})
+	.input(z.object({ id: z.string().min(1), mode: z.enum(["shadow", "live"]) }))
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		await setProjectMode(input.id, input.mode);
 		return { ok: true };
 	});
 
@@ -271,6 +287,7 @@ export const yantraRouter = {
 	listProjects: listProjectsRoute,
 	addProject: addProjectRoute,
 	setProjectEnabled: setProjectEnabledRoute,
+	setProjectMode: setProjectModeRoute,
 	rotateProjectToken: rotateProjectTokenRoute,
 	getKillSwitch: getKillSwitchRoute,
 	setKillSwitch: setKillSwitchRoute,
