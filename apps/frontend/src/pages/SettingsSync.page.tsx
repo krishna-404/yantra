@@ -23,7 +23,6 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SyncProblemIcon from "@mui/icons-material/SyncProblem";
 import { useState } from "react";
-import { useNavigate } from "react-router";
 
 const HERO_ICON_SX = { fontSize: 32 } as const;
 
@@ -243,7 +242,6 @@ function FileRow({ teamId, snap }: FileRowProps) {
 }
 
 function FilePendingItem({ row }: { row: StoredFile }) {
-	const navigate = useNavigate();
 	const [busy, setBusy] = useState(false);
 	const isServerKnown = Boolean(row.createdAt);
 
@@ -307,15 +305,6 @@ function FilePendingItem({ row }: { row: StoredFile }) {
 				</Typography>
 			</Box>
 			<Stack direction="row" spacing={1}>
-				{isServerKnown && row.tableName === "journalEntries" && (
-					<Button
-						size="small"
-						onClick={() => navigate(`/journal-entries/${row.tableId}`)}
-						disabled={busy}
-					>
-						Open entry
-					</Button>
-				)}
 				{isServerKnown ? (
 					<Button
 						size="small"
@@ -343,7 +332,6 @@ function FilePendingItem({ row }: { row: StoredFile }) {
 }
 
 function FileErrorItem({ row }: { row: StoredFile }) {
-	const navigate = useNavigate();
 	const [busy, setBusy] = useState(false);
 	// A file's `createdAt` is stamped `0` at upsertLocal and only gets a
 	// real value once the parent journal-entry's create/pushCreates
@@ -429,14 +417,6 @@ function FileErrorItem({ row }: { row: StoredFile }) {
 						disabled={busy}
 					>
 						Discard
-					</Button>
-				) : row.tableName === "journalEntries" ? (
-					<Button
-						size="small"
-						onClick={() => navigate(`/journal-entries/${row.tableId}`)}
-						disabled={busy}
-					>
-						Open entry
 					</Button>
 				) : null}
 			</Stack>

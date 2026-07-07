@@ -122,7 +122,7 @@ export const PwaInstallSheet = () => {
 		{
 			id: "offline",
 			icon: <OfflineBoltRoundedIcon fontSize="small" color="primary" />,
-			text: "Works offline — journal even without a connection.",
+			text: "Works offline — your data stays available without a connection.",
 		},
 		{
 			id: "fullscreen",
@@ -230,7 +230,7 @@ export const PwaInstallSheet = () => {
 								Install Yantra
 							</Typography>
 							<Typography variant="body2" color="text.secondary">
-								Scheduled Prompt & Journal
+								The one-person unicorn builder
 							</Typography>
 						</Box>
 					</Stack>
