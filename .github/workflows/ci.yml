@@ -111,3 +111,74 @@ jobs:
       # Fails when coverage drops below the committed ratchet baseline in
       # apps/backend/coverage.thresholds.json (vitest coverage.thresholds).
       - run: yarn test:coverage
+
+  # Playwright E2E (Y1.A / issue #5). NOT yet a required check — branch
+  # protection stays {checks, tests, coverage} until #7 promotes this.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    # Heavier than the unit jobs: builds backend + frontend (test mode) and
+    # boots two servers before the suite runs, so give it more headroom.
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # Matches apps/backend/.env.test so `yarn db drop` always has a target.
+          POSTGRES_DB: connected_repo_orpc_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      # Backend + the frontend test build resolve @connected-repo/zod-schemas
+      # through its package exports to dist/ — build it first (as the tests job does).
+      - run: yarn workspace @connected-repo/zod-schemas run build
+      # Frontend test-mode build + Playwright both read env from apps/frontend/.env.test
+      # (Vite loadEnv and playwright.config.ts's dotenv). Turbo runs in strict env mode,
+      # so job-level VITE_* vars would not reach those child processes — the file is the
+      # reliable channel. Ports mirror apps/backend/.env.test (backend 3001, preview 5174).
+      - name: Provision frontend test env
+        run: |
+          cat > apps/frontend/.env.test <<'EOF'
+          VITE_USER_NODE_ENV=test
+          VITE_OTEL_SERVICE_NAME=connected-repo-backend
+          VITE_API_URL=http://localhost:3001
+          VITE_USER_APP_URL=http://localhost:5174
+          VITE_TEST_PASSWORD=SecureTestPassword123!@#
+          EOF
+      # Provision the test DB (drop → create → migrate → seed) — same step the tests job uses.
+      - run: yarn test:db:setup
+      # test:e2e boots the backend via `test:server:start` (node dist/server.js), so the
+      # backend must be built in test mode first. Turbo's test:e2e task graph only builds
+      # the frontend, not the backend, so build it explicitly here.
+      - run: yarn workspace @connected-repo/backend run test:build
+      # Only Chromium is needed: the CI Playwright projects (Desktop Chrome + auth-test)
+      # both use Chromium; mobile projects are gated off in CI (see playwright.config.ts).
+      - name: Install Playwright browsers
+        working-directory: apps/frontend
+        run: yarn playwright install --with-deps chromium
+      # Builds the frontend in test mode, then Playwright boots the backend test server
+      # and the Vite preview and runs the suite headless (workers=1, retries=1 in CI).
+      - run: yarn test:e2e:with-build
+      # On failure, keep the HTML report + traces (trace: on-first-retry in CI) for triage.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/frontend/e2e/playwright-report/
+            apps/frontend/e2e/test-results/
+          retention-days: 7
