@@ -155,6 +155,8 @@ export default function YantraCockpitPage() {
 
 				<ProjectsCard projects={projects} onChanged={refresh} />
 
+				<RunnerInfraCard />
+
 				<Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
 					<StatTile label="Total runs" value={summary?.totalRuns ?? "—"} />
 					<StatTile label="Merges" value={summary?.merges ?? "—"} />
@@ -448,6 +450,150 @@ function ProjectsCard({
 					{msg}
 				</Typography>
 			)}
+		</Card>
+	);
+}
+
+/**
+ * H5 pre-flight: shows whether the app can reach the host's Docker daemon
+ * (the Dokploy socket mount) and holds the Claude token the execute
+ * containers will run on — pasted once, stored encrypted, shown as last-4.
+ */
+function RunnerInfraCard() {
+	const [docker, setDocker] = useState<{
+		reachable: boolean;
+		version: string | null;
+		execImagePresent: boolean;
+		error: string | null;
+	} | null>(null);
+	const [secrets, setSecrets] = useState<
+		{ key: string; valueHint: string }[] | null
+	>(null);
+	const [claudeToken, setClaudeToken] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [msg, setMsg] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		try {
+			const [d, s] = await Promise.all([
+				get<typeof docker>("/yantra/docker-status"),
+				get<{ secrets: { key: string; valueHint: string }[] }>(
+					"/yantra/app-secrets",
+				),
+			]);
+			setDocker(d);
+			setSecrets(s.secrets);
+		} catch {
+			// Section stays in its loading state; the page-level gate handles auth.
+		}
+	}, []);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	const saveClaudeToken = async () => {
+		setBusy(true);
+		setMsg(null);
+		try {
+			const res = await fetch(`${base}/yantra/app-secrets`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					key: "CLAUDE_CODE_OAUTH_TOKEN",
+					value: claudeToken,
+				}),
+			});
+			if (!res.ok) throw new Error(String(res.status));
+			setClaudeToken("");
+			setMsg("Saved. The execute runner will use this token.");
+			await load();
+		} catch (err) {
+			setMsg(
+				`Couldn't save (${err instanceof Error ? err.message : "error"}).`,
+			);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const claudeSecret = secrets?.find((s) => s.key === "CLAUDE_CODE_OAUTH_TOKEN");
+
+	return (
+		<Card sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
+			<Typography variant="h6" sx={{ fontWeight: 700 }}>
+				Runner infrastructure
+			</Typography>
+			<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+				What the app needs before it can run work itself (instead of the VPS
+				loop): access to Docker, and the Claude token its workers sign in with.
+			</Typography>
+
+			<Stack spacing={1.5}>
+				<Stack direction="row" spacing={1} alignItems="center">
+					<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 130 }}>
+						Docker
+					</Typography>
+					{docker === null ? (
+						<Typography variant="body2" color="text.secondary">
+							checking…
+						</Typography>
+					) : docker.reachable ? (
+						<Typography variant="body2" sx={{ color: "success.main" }}>
+							reachable (v{docker.version})
+							{docker.execImagePresent
+								? " · yantra-exec image found"
+								: " · yantra-exec image MISSING on host"}
+						</Typography>
+					) : (
+						<Typography variant="body2" sx={{ color: "error.main" }}>
+							not reachable — check the /var/run/docker.sock mount on the
+							backend service and redeploy
+						</Typography>
+					)}
+				</Stack>
+
+				<Stack direction="row" spacing={1} alignItems="center">
+					<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 130 }}>
+						Claude token
+					</Typography>
+					{claudeSecret ? (
+						<Typography variant="body2" sx={{ color: "success.main" }}>
+							set (…{claudeSecret.valueHint}) — paste again below to rotate
+						</Typography>
+					) : (
+						<Typography variant="body2" color="text.secondary">
+							not set — on the VPS run{" "}
+							<code>sudo grep CLAUDE_CODE_OAUTH_TOKEN /opt/yantra/env/yantra.env</code>{" "}
+							and paste the value here
+						</Typography>
+					)}
+				</Stack>
+
+				<Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+					<TextField
+						label="CLAUDE_CODE_OAUTH_TOKEN"
+						size="small"
+						type="password"
+						value={claudeToken}
+						onChange={(e) => setClaudeToken(e.target.value)}
+						sx={{ flex: 1 }}
+					/>
+					<Button
+						variant="contained"
+						onClick={saveClaudeToken}
+						disabled={busy || claudeToken.trim().length < 8}
+					>
+						{claudeSecret ? "Rotate token" : "Save token"}
+					</Button>
+				</Stack>
+				{msg && (
+					<Typography variant="body2" color="text.secondary">
+						{msg}
+					</Typography>
+				)}
+			</Stack>
 		</Card>
 	);
 }
