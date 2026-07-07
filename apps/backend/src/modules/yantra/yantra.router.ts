@@ -81,7 +81,10 @@ const summary = rpcSuperAdminProcedure
 
 const listRuns = rpcSuperAdminProcedure
 	.route({ method: "GET", path: "/yantra/runs", tags: ["Yantra"] })
-	.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+	// GET query params arrive as strings through the OpenAPI handler — coerce.
+	.input(
+		z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }),
+	)
 	.output(z.object({ rows: z.array(telemetryRowZod) }))
 	.handler(async ({ input }) => {
 		const rows = await db.yantraTelemetry
