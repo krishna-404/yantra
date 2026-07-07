@@ -16,6 +16,24 @@ export const userDeletedEventDef = defineEvent({
 	}),
 });
 
+// One live yantra turn (advise → execute) — queued by the tick after a claim.
+// retryLimit 0: §2.3 retry semantics live INSIDE the runner; a tbus re-run
+// would double-claim the issue. expireInSeconds covers advise (15 m) +
+// execute (2 h) + one in-runner retry with margin.
+export const yantraLiveTurnTaskDef = defineTask({
+	task_name: "yantra.live_turn",
+	schema: Type.Object({
+		projectId: Type.String(),
+		issue: Type.Number(),
+		turn: Type.String(),
+	}),
+	config: {
+		retryLimit: 0,
+		expireInSeconds: 5 * 60 * 60,
+		keepInSeconds: 604800,
+	},
+});
+
 // Triggered when API usage reaches the 90% threshold.
 export const subscriptionAlertWebhookTaskDef = defineTask({
 	task_name: "subscription.alert_webhook",

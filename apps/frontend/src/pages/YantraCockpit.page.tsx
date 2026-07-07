@@ -26,6 +26,7 @@ interface Project {
 	baseBranch: string;
 	enabled: boolean;
 	ghTokenHint: string;
+	mode: string;
 	createdAt: number;
 }
 
@@ -349,6 +350,30 @@ function ProjectsCard({
 		}
 	};
 
+	const handleMode = async (p: Project) => {
+		const goingLive = p.mode !== "live";
+		if (
+			goingLive &&
+			!window.confirm(
+				`Go LIVE on ${p.repo}?\n\nThe app will start claiming issues, running Claude in containers, and opening PRs on this repo. Make sure no other loop (like the VPS one) is working the same repo — two claimers double-book work.\n\nYou can switch back to Shadow at any time; the kill switch also stops everything.`,
+			)
+		) {
+			return;
+		}
+		setBusy(true);
+		try {
+			await post("/yantra/projects/set-mode", {
+				id: p.id,
+				mode: goingLive ? "live" : "shadow",
+			});
+			await onChanged();
+		} catch {
+			setMsg("Couldn't switch the mode.");
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	return (
 		<Card sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
 			<Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -378,11 +403,22 @@ function ProjectsCard({
 							</Typography>
 							<Typography variant="caption" color="text.secondary">
 								token …{p.ghTokenHint || "????"} ·{" "}
-								{p.enabled ? "enabled" : "paused"}
+								{p.enabled ? "enabled" : "paused"} ·{" "}
+								{p.mode === "live"
+									? "LIVE — the app acts on this repo"
+									: "shadow — decides but doesn't act"}
 							</Typography>
 						</Box>
 						<Stack direction="row" spacing={1} alignItems="center">
 							<KillSwitch projectId={p.id} />
+							<Button
+								size="small"
+								color={p.mode === "live" ? "warning" : "primary"}
+								disabled={busy}
+								onClick={() => handleMode(p)}
+							>
+								{p.mode === "live" ? "Back to shadow" : "Go live"}
+							</Button>
 							<Button
 								size="small"
 								disabled={busy}

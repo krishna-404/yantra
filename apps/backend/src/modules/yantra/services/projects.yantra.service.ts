@@ -22,6 +22,7 @@ export interface YantraProjectView {
 	baseBranch: string;
 	enabled: boolean;
 	ghTokenHint: string;
+	mode: string;
 	createdAt: number;
 }
 
@@ -74,23 +75,50 @@ export const setProjectEnabled = async (
 
 export const listProjects = async (): Promise<YantraProjectView[]> => {
 	const rows = await db.yantraProjects
-		.select("id", "repo", "baseBranch", "enabled", "ghTokenHint", "createdAt")
+		.select(
+			"id",
+			"repo",
+			"baseBranch",
+			"enabled",
+			"ghTokenHint",
+			"mode",
+			"createdAt",
+		)
 		.order({ createdAt: "ASC" });
 	return rows.map(toView);
 };
 
-/** Internal only — feeds the shadow tick. Never expose through the API. */
+/**
+ * The H9 cutover lever. Going live is deliberate: it makes the app CLAIM
+ * issues and open PRs on this repo — never flip it while the v0 loop still
+ * ticks the same repo (double-claim).
+ */
+export const setProjectMode = async (
+	id: string,
+	mode: "shadow" | "live",
+): Promise<void> => {
+	await db.yantraProjects.findBy({ id }).update({ mode });
+};
+
+/** Internal only — feeds the tick. Never expose through the API. */
 export const listEnabledProjectsWithTokens = async (): Promise<
-	{ id: string; repo: string; baseBranch: string; ghToken: string }[]
+	{
+		id: string;
+		repo: string;
+		baseBranch: string;
+		mode: string;
+		ghToken: string;
+	}[]
 > => {
 	const rows = await db.yantraProjects
 		.where({ enabled: true })
-		.select("id", "repo", "baseBranch", "ghTokenCiphertext")
+		.select("id", "repo", "baseBranch", "mode", "ghTokenCiphertext")
 		.order({ createdAt: "ASC" });
 	return rows.map((r) => ({
 		id: r.id,
 		repo: r.repo,
 		baseBranch: r.baseBranch,
+		mode: r.mode,
 		ghToken: openSecret(r.ghTokenCiphertext),
 	}));
 };
@@ -101,6 +129,7 @@ const toView = (row: {
 	baseBranch: string;
 	enabled: boolean;
 	ghTokenHint: string;
+	mode: string;
 	createdAt: number;
 }): YantraProjectView => ({
 	id: row.id,
@@ -108,5 +137,6 @@ const toView = (row: {
 	baseBranch: row.baseBranch,
 	enabled: row.enabled,
 	ghTokenHint: row.ghTokenHint,
+	mode: row.mode,
 	createdAt: row.createdAt,
 });

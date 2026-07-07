@@ -1,6 +1,14 @@
 import { db } from "@backend/db/db";
+import { yantraLiveTurnTaskDef } from "@backend/events/events.schema";
+import { tbus } from "@backend/events/tbus";
 import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
 import { listEnabledProjectsWithTokens } from "@backend/modules/yantra/services/projects.yantra.service";
+import {
+	addIssueLabels,
+	commentOnIssue,
+	removeIssueLabel,
+	routeModel,
+} from "@backend/modules/yantra/services/turn_shared.yantra.service";
 import {
 	canClaim,
 	STALE_CLAIM_MS,
@@ -211,6 +219,7 @@ const recordDecision = async (
 	project: { repo: string; baseBranch: string },
 	decision: ShadowDecision,
 	started: Date,
+	lane: "shadow" | "live" = "shadow",
 ): Promise<void> => {
 	const id = ulid();
 	await db.yantraTelemetry.create({
@@ -219,8 +228,8 @@ const recordDecision = async (
 		repo: project.repo,
 		baseBranch: project.baseBranch,
 		issue: decision.wouldClaim ?? 0,
-		role: "shadow_tick",
-		lane: "shadow",
+		role: lane === "live" ? "tick" : "shadow_tick",
+		lane,
 		model: "none",
 		promptVersion: 1,
 		tier: "",
@@ -247,6 +256,82 @@ export interface ProjectShadowResult {
 	decision: ShadowDecision;
 }
 
+// ── live mode (H5): the same decision, ACTED on ─────────────────────────────
+
+/**
+ * v0's claim back-off: a claim comment counts as live ONLY if nothing
+ * released it afterwards (parks/reaps post a release marker). Without this,
+ * two orchestrators — or a park→re-ready cycle — would stall or double-claim.
+ */
+const hasLiveUnreleasedClaim = async (
+	repo: string,
+	issue: number,
+	token: string,
+): Promise<boolean> => {
+	try {
+		const comments = await gh<{ body: string; created_at: string }[]>(
+			`/repos/${repo}/issues/${issue}/comments?per_page=100`,
+			token,
+		);
+		const last = (pred: (b: string) => boolean) =>
+			comments.filter((c) => pred(c.body)).at(-1)?.created_at ?? null;
+		const lastClaim = last((b) => b.includes("yantra claim"));
+		if (!lastClaim) return false;
+		const lastRelease = last(
+			(b) =>
+				b.includes("parked") ||
+				b.includes("yantra reap") ||
+				b.includes("claim released"),
+		);
+		if (lastRelease && lastRelease >= lastClaim) return false;
+		return Date.now() - new Date(lastClaim).getTime() < STALE_CLAIM_MS;
+	} catch {
+		return true; // unknown state blocks the claim — conservative
+	}
+};
+
+const actOnLiveDecision = async (
+	project: { id: string; repo: string; baseBranch: string; ghToken: string },
+	decision: ShadowDecision,
+): Promise<string> => {
+	const { repo, ghToken } = project;
+
+	for (const issue of decision.wouldReap) {
+		await addIssueLabels(repo, issue, ["spec:ready"], ghToken).catch(() => {});
+		await removeIssueLabel(repo, issue, "agent:working", ghToken);
+		await commentOnIssue(
+			repo,
+			issue,
+			"🤖 yantra reap: stale claim (>2 h, no PR) — released back to spec:ready.",
+			ghToken,
+		).catch(() => {});
+		logger.warn({ repo, issue }, "yantra live tick: reaped stale claim");
+	}
+
+	if (decision.wouldClaim === null) return decision.outcome;
+	const issue = decision.wouldClaim;
+
+	if (await hasLiveUnreleasedClaim(repo, issue, ghToken)) {
+		logger.warn({ repo, issue }, "yantra live tick: rival claim — backing off");
+		return "backoff_live_claim";
+	}
+
+	const turn = ulid();
+	await addIssueLabels(repo, issue, ["agent:working"], ghToken);
+	await removeIssueLabel(repo, issue, "spec:ready", ghToken);
+	await commentOnIssue(
+		repo,
+		issue,
+		`🤖 yantra claim run=${turn} role=execute model=${routeModel("execute.T1")}`,
+		ghToken,
+	);
+	await tbus.send(
+		yantraLiveTurnTaskDef.from({ projectId: project.id, issue, turn }),
+	);
+	logger.info({ repo, issue, turn }, "yantra live tick: claimed, turn queued");
+	return `claimed_#${issue}`;
+};
+
 /**
  * One shadow tick across every enabled project: gather → decide → record,
  * per project row. Never writes to GitHub. No projects ⇒ quiet no-op. One
@@ -262,7 +347,17 @@ export const runShadowTick = async (): Promise<ProjectShadowResult[]> => {
 		try {
 			const inputs = await gatherInputs(project.repo, project.ghToken);
 			const decision = decideShadowTick(inputs);
-			await recordDecision(project, decision, started);
+			if (project.mode === "live") {
+				const acted = await actOnLiveDecision(project, decision);
+				await recordDecision(
+					project,
+					{ ...decision, outcome: acted },
+					started,
+					"live",
+				);
+			} else {
+				await recordDecision(project, decision, started);
+			}
 			logger.info(
 				{
 					repo: project.repo,

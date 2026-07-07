@@ -2,10 +2,12 @@ import {
 	subscriptionAlertWebhookTaskDef,
 	userCreatedEventDef,
 	userDeletedEventDef,
+	yantraLiveTurnTaskDef,
 } from "@backend/events/events.schema";
 import { userCreatedNotificationHandler } from "@backend/modules/users/notifications/user_created.notifications.user";
 import { userDeletedNotificationHandler } from "@backend/modules/users/notifications/user_deleted.notifications.user";
 import { subscriptionAlertWebhookHandler } from "@backend/modules/webhook_calls/handlers/subscription_alert_webhook.handler";
+import { runLiveTurn } from "@backend/modules/yantra/services/live_turn.yantra.service";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
 import { logger } from "@backend/utils/logger.utils";
 import type { Query } from "orchid-orm";
@@ -58,6 +60,15 @@ export const startEventBus = (): Promise<void> => {
 				createTaskHandler({
 					taskDef: subscriptionAlertWebhookTaskDef,
 					handler: subscriptionAlertWebhookHandler,
+				}),
+			);
+
+			tbus.registerTask(
+				createTaskHandler({
+					taskDef: yantraLiveTurnTaskDef,
+					handler: async ({ input }) => {
+						await runLiveTurn(input);
+					},
 				}),
 			);
 
