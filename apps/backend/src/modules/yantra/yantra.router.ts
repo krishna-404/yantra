@@ -1,5 +1,11 @@
 import { db } from "@backend/db/db";
 import {
+	addProject,
+	listProjects,
+	rotateProjectToken,
+	setProjectEnabled,
+} from "@backend/modules/yantra/services/projects.yantra.service";
+import {
 	importTelemetryRows,
 	parseTelemetryJsonl,
 } from "@backend/modules/yantra/services/telemetry_import.yantra.service";
@@ -116,8 +122,73 @@ const importTelemetry = rpcSuperAdminProcedure
 		return { ...result, parseErrors: errors.slice(0, 20) };
 	});
 
+// ── projects (D23) — repo + branch + encrypted PAT, managed from the cockpit ─
+
+const projectViewZod = z.object({
+	id: z.string(),
+	repo: z.string(),
+	baseBranch: z.string(),
+	enabled: z.boolean(),
+	// Last 4 chars of the PAT only — plaintext never crosses the API.
+	ghTokenHint: z.string(),
+	createdAt: z.number(),
+});
+
+const listProjectsRoute = rpcSuperAdminProcedure
+	.route({ method: "GET", path: "/yantra/projects", tags: ["Yantra"] })
+	.output(z.object({ projects: z.array(projectViewZod) }))
+	.handler(async () => ({ projects: await listProjects() }));
+
+const addProjectRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/projects", tags: ["Yantra"] })
+	.input(
+		z.object({
+			repo: z
+				.string()
+				.min(3)
+				.max(255)
+				.regex(/^[\w.-]+\/[\w.-]+$/, "must look like owner/name"),
+			baseBranch: z.string().min(1).max(255),
+			ghToken: z.string().min(20).max(500),
+		}),
+	)
+	.output(projectViewZod)
+	.handler(async ({ input }) => addProject(input));
+
+const setProjectEnabledRoute = rpcSuperAdminProcedure
+	.route({
+		method: "POST",
+		path: "/yantra/projects/set-enabled",
+		tags: ["Yantra"],
+	})
+	.input(z.object({ id: z.string().min(1), enabled: z.boolean() }))
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		await setProjectEnabled(input.id, input.enabled);
+		return { ok: true };
+	});
+
+const rotateProjectTokenRoute = rpcSuperAdminProcedure
+	.route({
+		method: "POST",
+		path: "/yantra/projects/rotate-token",
+		tags: ["Yantra"],
+	})
+	.input(
+		z.object({ id: z.string().min(1), ghToken: z.string().min(20).max(500) }),
+	)
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		await rotateProjectToken(input.id, input.ghToken);
+		return { ok: true };
+	});
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
 	importTelemetry,
+	listProjects: listProjectsRoute,
+	addProject: addProjectRoute,
+	setProjectEnabled: setProjectEnabledRoute,
+	rotateProjectToken: rotateProjectTokenRoute,
 };

@@ -166,3 +166,16 @@ The durable harness lives in **`apps/backend/src/modules/yantra/`**, not a separ
 cockpit routes), the Orchid DB, and pg-tbus — all of which ARE the backend; a separate
 app would duplicate boot/env/deploy for one tenant. H1 (PR #80) landed on this path;
 H2+ follow it. Revisit only at Phase-4 multi-tenant extraction, as a widening.
+
+## D23 — Secrets are project-scoped, in the DB (fulfils D21's Phase-2 clause)
+_2026-07-07 · status: locked_
+
+Harness credentials belong to **projects, not the server**. A project = repo + base
+branch + its own GitHub token, stored in `yantra_projects` encrypted at rest
+(AES-256-GCM, key derived from the existing `BETTER_AUTH_SECRET` — no new env var).
+Tokens are write-only through the API: the cockpit shows a last-4 hint, plaintext is
+decrypted just-in-time by the tick/workers and never serialized. Tenant-zero
+(`krishna-404/yantra` @ `staging`) is added through the cockpit's "Add project" form
+like every future project will be. `YANTRA_GH_TOKEN` (briefly added for H4 shadow) is
+removed. Phase-4 multi-tenant = add a `teamId` column + team-scoped gate — a widening,
+not a rewrite.

@@ -1,4 +1,3 @@
-import { env } from "@backend/configs/env.config";
 import { db } from "@backend/db/db";
 import { runShadowTick } from "@backend/modules/yantra/services/shadow_tick.yantra.service";
 import { logger } from "@backend/utils/logger.utils";
@@ -12,8 +11,9 @@ let scheduledTask: ScheduledTask | null = null;
 /**
  * H4 shadow mode: every 10 minutes (same cadence as the VPS loop's systemd
  * timer) the app decides what the harness WOULD do and records it — the H9
- * parity record. Advisory lock = multi-replica safe. Gated on
- * YANTRA_GH_TOKEN; absent means the tick never starts.
+ * parity record. Advisory lock = multi-replica safe. Credentials are
+ * project-scoped (D23): the tick reads enabled yantra_projects rows and
+ * quietly no-ops when there are none, so it always starts.
  */
 export async function yantraShadowTickOnce(): Promise<void> {
 	try {
@@ -30,10 +30,6 @@ export async function yantraShadowTickOnce(): Promise<void> {
 }
 
 export function startYantraShadowTickCron(): void {
-	if (!env.YANTRA_GH_TOKEN) {
-		logger.info("YANTRA_GH_TOKEN unset; yantra shadow tick disabled");
-		return;
-	}
 	scheduledTask = cron.schedule("*/10 * * * *", () => {
 		void yantraShadowTickOnce();
 	});
