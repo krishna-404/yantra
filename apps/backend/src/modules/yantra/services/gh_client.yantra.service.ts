@@ -7,7 +7,7 @@
 const API = "https://api.github.com";
 
 export const ghRequest = async <T>(
-	method: "GET" | "POST" | "PATCH" | "DELETE",
+	method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
 	path: string,
 	token: string,
 	body?: unknown,
