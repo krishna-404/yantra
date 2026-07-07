@@ -190,3 +190,14 @@ decision in the window (a would-claim / would-reap on either side) identical bet
 v0 and the app, or divergence explained in writing — with a **minimum of 5
 decision-bearing comparisons**; if fewer occur naturally the window extends until 5
 are seen. Stricter where it matters, faster where it doesn't.
+
+## D25 — Control plane runs on prod, operates staging
+_2026-07-07 · status: locked_
+
+The harness deployment and the code it modifies are SEPARATED: the prod deployment
+(main branch, human-promoted only) runs the cockpit + tick + runners, with
+`krishna-404/yantra @ staging` as its project. A broken staging merge can kill the
+staging app but never the control centre; the control centre itself only changes via
+deliberate promotion. Staging's own deployment keeps a cockpit for preview but holds
+no projects. Corollary: during Phase 2, promote main more often than usual — each
+promotion is the human gate that keeps the surgeon separate from the patient.

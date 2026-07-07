@@ -1,7 +1,9 @@
 import { db } from "@backend/db/db";
 import { yantraLiveTurnTaskDef } from "@backend/events/events.schema";
 import { tbus } from "@backend/events/tbus";
+import { getAppSecretValue } from "@backend/modules/yantra/services/app_secrets.yantra.service";
 import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
+import { runGradeScan } from "@backend/modules/yantra/services/grade_runner.yantra.service";
 import { listEnabledProjectsWithTokens } from "@backend/modules/yantra/services/projects.yantra.service";
 import {
 	addIssueLabels,
@@ -348,6 +350,19 @@ export const runShadowTick = async (): Promise<ProjectShadowResult[]> => {
 			const inputs = await gatherInputs(project.repo, project.ghToken);
 			const decision = decideShadowTick(inputs);
 			if (project.mode === "live") {
+				// Grade runs detached (rubric containers are slow) with its own
+				// serial guard — v0 order preserved: reap → grade → claim.
+				const claudeToken = await getAppSecretValue("CLAUDE_CODE_OAUTH_TOKEN");
+				if (claudeToken) {
+					void runGradeScan({
+						repo: project.repo,
+						baseBranch: project.baseBranch,
+						ghToken: project.ghToken,
+						claudeToken,
+					}).catch((err) =>
+						logger.error({ err, repo: project.repo }, "grade scan failed"),
+					);
+				}
 				const acted = await actOnLiveDecision(project, decision);
 				await recordDecision(
 					project,
