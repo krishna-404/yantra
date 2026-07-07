@@ -77,10 +77,13 @@ export default function YantraCockpitPage() {
 	}, []);
 
 	useEffect(() => {
+		// Once the gate says 401/403 the answer won't change without a re-login —
+		// stop polling instead of hammering the backend every 30 s.
+		if (denied) return;
 		void refresh();
 		const t = window.setInterval(() => void refresh(), 30_000);
 		return () => window.clearInterval(t);
-	}, [refresh]);
+	}, [refresh, denied]);
 
 	const handleImport = async () => {
 		setImporting(true);

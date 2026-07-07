@@ -15,6 +15,7 @@ import {
 } from "@backend/configs/env.config";
 import { startReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
 import { startSilentSyncDispatchCron } from "@backend/cron_jobs/silent_sync_dispatch.cron";
+import { startYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { startEventBus } from "@backend/events/events.utils";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
 import { handleServerClose } from "@backend/utils/graceful_shutdown.utils";
@@ -142,6 +143,11 @@ try {
 	// directly. Gated on FIREBASE_SERVICE_ACCOUNT_JSON / GOOGLE_APPLICATION_CREDENTIALS
 	// being set (see firebase_admin.config.ts); the cron self-noops otherwise.
 	startSilentSyncDispatchCron();
+
+	// H4 shadow mode: the app decides what the harness WOULD do each tick and
+	// records it (parity record for the v0→v1 cutover). Self-disables when
+	// YANTRA_GH_TOKEN is unset; never writes to GitHub.
+	startYantraShadowTickCron();
 
 	handleServerClose(server);
 } catch (err) {
