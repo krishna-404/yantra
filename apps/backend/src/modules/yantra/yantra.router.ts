@@ -1,5 +1,9 @@
 import { db } from "@backend/db/db";
 import {
+	getKillSwitch,
+	setKillSwitch,
+} from "@backend/modules/yantra/services/kill_switch.yantra.service";
+import {
 	addProject,
 	listProjects,
 	rotateProjectToken,
@@ -186,6 +190,27 @@ const rotateProjectTokenRoute = rpcSuperAdminProcedure
 		return { ok: true };
 	});
 
+// ── kill switch (H10) — the cockpit red button, per project ─────────────────
+
+const killSwitchStateZod = z.object({
+	projectId: z.string(),
+	repo: z.string(),
+	// null = variable unreadable; the harness fails closed and treats it as ON.
+	kill: z.boolean().nullable(),
+});
+
+const getKillSwitchRoute = rpcSuperAdminProcedure
+	.route({ method: "GET", path: "/yantra/kill-switch", tags: ["Yantra"] })
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(killSwitchStateZod)
+	.handler(async ({ input }) => getKillSwitch(input.projectId));
+
+const setKillSwitchRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/kill-switch", tags: ["Yantra"] })
+	.input(z.object({ projectId: z.string().min(1), kill: z.boolean() }))
+	.output(killSwitchStateZod)
+	.handler(async ({ input }) => setKillSwitch(input.projectId, input.kill));
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
@@ -194,4 +219,6 @@ export const yantraRouter = {
 	addProject: addProjectRoute,
 	setProjectEnabled: setProjectEnabledRoute,
 	rotateProjectToken: rotateProjectTokenRoute,
+	getKillSwitch: getKillSwitchRoute,
+	setKillSwitch: setKillSwitchRoute,
 };

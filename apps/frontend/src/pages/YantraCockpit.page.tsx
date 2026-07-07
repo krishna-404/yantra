@@ -379,9 +379,16 @@ function ProjectsCard({
 								{p.enabled ? "enabled" : "paused"}
 							</Typography>
 						</Box>
-						<Button size="small" disabled={busy} onClick={() => handleToggle(p)}>
-							{p.enabled ? "Pause" : "Enable"}
-						</Button>
+						<Stack direction="row" spacing={1} alignItems="center">
+							<KillSwitch projectId={p.id} />
+							<Button
+								size="small"
+								disabled={busy}
+								onClick={() => handleToggle(p)}
+							>
+								{p.enabled ? "Pause" : "Enable"}
+							</Button>
+						</Stack>
 					</Stack>
 				))}
 				{projects.length === 0 && (
@@ -442,6 +449,93 @@ function ProjectsCard({
 				</Typography>
 			)}
 		</Card>
+	);
+}
+
+/**
+ * The red button (H10): YANTRA_KILL lives as a GitHub Actions variable on the
+ * project's repo — both the v0 loop and the app's tick read it and fail
+ * closed. Toggling here PATCHes the variable with the project's own token
+ * (needs Variables read-write on the PAT; read-only shows state but the
+ * toggle will fail).
+ */
+function KillSwitch({ projectId }: { projectId: string }) {
+	const [kill, setKill] = useState<boolean | null | undefined>(undefined);
+	const [busy, setBusy] = useState(false);
+	const [failed, setFailed] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const s = await get<{ kill: boolean | null }>(
+					`/yantra/kill-switch?projectId=${encodeURIComponent(projectId)}`,
+				);
+				if (!cancelled) setKill(s.kill);
+			} catch {
+				if (!cancelled) setKill(null);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId]);
+
+	const toggle = async () => {
+		if (kill === undefined) return;
+		setBusy(true);
+		setFailed(false);
+		try {
+			const res = await fetch(`${base}/yantra/kill-switch`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ projectId, kill: !(kill ?? true) }),
+			});
+			if (!res.ok) throw new Error(String(res.status));
+			const s = (await res.json()) as { kill: boolean | null };
+			setKill(s.kill);
+		} catch {
+			// Most likely the PAT lacks Variables read-write.
+			setFailed(true);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const label =
+		kill === undefined ? "kill: …" : kill === null ? "kill: ?" : kill ? "KILLED" : "running";
+
+	return (
+		<Stack direction="row" spacing={0.5} alignItems="center">
+			<Typography
+				variant="caption"
+				sx={{
+					fontWeight: 700,
+					color:
+						kill === false
+							? "success.main"
+							: kill === undefined
+								? "text.secondary"
+								: "error.main",
+				}}
+			>
+				{label}
+			</Typography>
+			<Button
+				size="small"
+				color={kill ? "success" : "error"}
+				disabled={busy || kill === undefined}
+				onClick={toggle}
+				title={
+					failed
+						? "Toggle failed — does the PAT have Variables read-write?"
+						: undefined
+				}
+			>
+				{failed ? "retry" : kill === false ? "Kill" : "Unkill"}
+			</Button>
+		</Stack>
 	);
 }
 
