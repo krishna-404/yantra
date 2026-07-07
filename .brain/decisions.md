@@ -157,3 +157,12 @@ Zero host-side runtime on the VPS — every loop role including the tick orchest
 in a docker container; the host runs only systemd + docker (plus the units' `git pull`
 ExecStartPre); secrets are injected at container start from the root-only env file
 (DB-backed secret store + JIT tokens = Phase 2, Y2.8).
+
+## D22 — Harness home is the backend app (supersedes D6)
+_2026-07-07 · status: locked_
+
+The durable harness lives in **`apps/backend/src/modules/yantra/`**, not a separate
+`apps/yantra` workspace. Rationale: the harness needs the deployed HTTP server (H10
+cockpit routes), the Orchid DB, and pg-tbus — all of which ARE the backend; a separate
+app would duplicate boot/env/deploy for one tenant. H1 (PR #80) landed on this path;
+H2+ follow it. Revisit only at Phase-4 multi-tenant extraction, as a widening.
