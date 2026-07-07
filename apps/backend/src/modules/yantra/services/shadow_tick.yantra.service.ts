@@ -1,4 +1,5 @@
 import { db } from "@backend/db/db";
+import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
 import { listEnabledProjectsWithTokens } from "@backend/modules/yantra/services/projects.yantra.service";
 import {
 	canClaim,
@@ -25,26 +26,12 @@ import { ulid } from "ulid";
  * - Claim age comes from the latest "🤖 yantra claim" comment, same as v0.
  */
 
-const API = "https://api.github.com";
-
 interface GhIssue {
 	number: number;
 	body: string | null;
 	labels: { name: string }[];
 	pull_request?: unknown;
 }
-
-const gh = async <T>(path: string, token: string): Promise<T> => {
-	const res = await fetch(`${API}${path}`, {
-		headers: {
-			authorization: `Bearer ${token}`,
-			accept: "application/vnd.github+json",
-			"x-github-api-version": "2022-11-28",
-		},
-	});
-	if (!res.ok) throw new Error(`GitHub ${res.status} for ${path}`);
-	return (await res.json()) as T;
-};
 
 // ── pure decision core (unit-tested; no I/O) ────────────────────────────────
 
