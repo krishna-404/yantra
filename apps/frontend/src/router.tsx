@@ -76,6 +76,12 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 						path: "settings/sync",
 						lazy: lazyRoute(() => import("@frontend/pages/SettingsSync.page")),
 					},
+					{
+						// The factory cockpit (H11 slice) — the server enforces the
+						// super-admin gate; non-admins get the access notice.
+						path: "yantra",
+						lazy: lazyRoute(() => import("@frontend/pages/YantraCockpit.page")),
+					},
 				],
 			},
 		],
