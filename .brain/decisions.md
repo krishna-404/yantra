@@ -179,3 +179,14 @@ decrypted just-in-time by the tick/workers and never serialized. Tenant-zero
 like every future project will be. `YANTRA_GH_TOKEN` (briefly added for H4 shadow) is
 removed. Phase-4 multi-tenant = add a `teamId` column + team-scoped gate — a widening,
 not a rewrite.
+
+## D24 — Parity window: 24 h, decision-weighted (amends H9 step 1)
+_2026-07-07 · status: locked (operator delegated the call 2026-07-07)_
+
+The doc's "3 consecutive days" of shadow parity measures wall-clock, but an idle
+backlog produces idle ticks that prove nothing. Cutover gate instead: **24 hours of
+shadow operation** AND all 10 §8 parity scenarios green in CI AND every non-idle
+decision in the window (a would-claim / would-reap on either side) identical between
+v0 and the app, or divergence explained in writing — with a **minimum of 5
+decision-bearing comparisons**; if fewer occur naturally the window extends until 5
+are seen. Stricter where it matters, faster where it doesn't.

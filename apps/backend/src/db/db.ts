@@ -13,6 +13,7 @@ import { TeamMemberTable } from "@backend/modules/teams/tables/team_members.tabl
 import { TeamApiTable } from "@backend/modules/teams/tables/teams_api.table";
 import { TeamAppTable } from "@backend/modules/teams/tables/teams_app.table";
 import { UserTable } from "@backend/modules/users/tables/users.table";
+import { YantraAppSecretTable } from "@backend/modules/yantra/tables/yantra_app_secrets.table";
 import { YantraProjectTable } from "@backend/modules/yantra/tables/yantra_projects.table";
 import { YantraRunTable } from "@backend/modules/yantra/tables/yantra_runs.table";
 import { YantraTelemetryTable } from "@backend/modules/yantra/tables/yantra_telemetry.table";
@@ -46,6 +47,7 @@ export const db = orchidORM(
 		pushDevices: PushDeviceTable,
 
 		// Yantra harness state (Phase 2, H1) — the factory's own tables.
+		yantraAppSecrets: YantraAppSecretTable,
 		yantraProjects: YantraProjectTable,
 		yantraTurns: YantraTurnTable,
 		yantraRuns: YantraRunTable,

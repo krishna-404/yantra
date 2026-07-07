@@ -1,5 +1,11 @@
 import { db } from "@backend/db/db";
 import {
+	APP_SECRET_KEYS,
+	listAppSecrets,
+	setAppSecret,
+} from "@backend/modules/yantra/services/app_secrets.yantra.service";
+import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
+import {
 	getKillSwitch,
 	setKillSwitch,
 } from "@backend/modules/yantra/services/kill_switch.yantra.service";
@@ -211,6 +217,53 @@ const setKillSwitchRoute = rpcSuperAdminProcedure
 	.output(killSwitchStateZod)
 	.handler(async ({ input }) => setKillSwitch(input.projectId, input.kill));
 
+// ── runner infrastructure (H5 pre-flight): app secrets + docker socket ──────
+
+const listAppSecretsRoute = rpcSuperAdminProcedure
+	.route({ method: "GET", path: "/yantra/app-secrets", tags: ["Yantra"] })
+	.output(
+		z.object({
+			secrets: z.array(
+				z.object({
+					key: z.string(),
+					valueHint: z.string(),
+					updatedAt: z.number(),
+				}),
+			),
+			knownKeys: z.array(z.string()),
+		}),
+	)
+	.handler(async () => ({
+		secrets: await listAppSecrets(),
+		knownKeys: [...APP_SECRET_KEYS],
+	}));
+
+const setAppSecretRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/app-secrets", tags: ["Yantra"] })
+	.input(
+		z.object({
+			key: z.enum(APP_SECRET_KEYS),
+			value: z.string().min(8).max(2000),
+		}),
+	)
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		await setAppSecret(input.key, input.value);
+		return { ok: true };
+	});
+
+const dockerStatusRoute = rpcSuperAdminProcedure
+	.route({ method: "GET", path: "/yantra/docker-status", tags: ["Yantra"] })
+	.output(
+		z.object({
+			reachable: z.boolean(),
+			version: z.string().nullable(),
+			execImagePresent: z.boolean(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async () => getDockerStatus());
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
@@ -221,4 +274,7 @@ export const yantraRouter = {
 	rotateProjectToken: rotateProjectTokenRoute,
 	getKillSwitch: getKillSwitchRoute,
 	setKillSwitch: setKillSwitchRoute,
+	listAppSecrets: listAppSecretsRoute,
+	setAppSecret: setAppSecretRoute,
+	dockerStatus: dockerStatusRoute,
 };
