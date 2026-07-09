@@ -1,3 +1,7 @@
+---
+strikes: 1
+---
+
 # better-auth additionalFields must change in lockstep (server ↔ client)
 
 When adding or removing a better-auth user/session `additionalFields` entry, the
