@@ -6,6 +6,7 @@ import { Card } from "@connected-repo/ui-mui/layout/Card";
 import { Container } from "@connected-repo/ui-mui/layout/Container";
 import { Stack } from "@connected-repo/ui-mui/layout/Stack";
 import { env } from "@frontend/configs/env.config";
+import { YantraChatSection } from "@frontend/pages/YantraChat.section";
 import { TextField } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 
@@ -155,6 +156,8 @@ export default function YantraCockpitPage() {
 				{error && <Alert severity="error">{error}</Alert>}
 
 				<ProjectsCard projects={projects} onChanged={refresh} />
+
+				<YantraChatSection base={base} projects={projects} />
 
 				<RunnerInfraCard />
 
