@@ -1,3 +1,7 @@
+---
+strikes: 1
+---
+
 # biome lint scans generated `coverage/` even though the formatter excludes it
 
 **Context:** Adding the CI coverage ratchet (#3). Running `yarn test:coverage` locally

@@ -71,10 +71,36 @@ the module's own `AGENTS.md` and match the surrounding code.
   - `test:run` fails with `database "connected_repo_orpc_db_test" does not exist` until
     the test DB is provisioned: `cd apps/backend && yarn test:db:setup` (drop → create
     → migrate → seed).
+  - `yarn knip` hits the same phantom-error gap: it loads the frontend `vite.config.ts`,
+    which resolves through `packages/zod-schemas`' built `dist/`, so an unbuilt package
+    tree produces false module-resolution failures, not real findings.
 - Before treating a red gate as caused by your change, reproduce it on the unmodified
   base commit (`git stash -u`, or a clean checkout). Identical failure on the clean tree
   means it's a bootstrap gap, not a regression — bootstrap the container, don't chase it
   by editing unrelated code.
+
+## Knip & strip-module rules
+
+- Knip's severity tiers are the real CI acceptance bar, not just its exit code: `files`,
+  `dependencies`, `devDependencies`, `unlisted` are `error` (gate CI); `exports`, `types`,
+  `duplicates` are `warn` (printed every run, non-gating backlog). When wiring a
+  whole-codebase linter into CI on a repo with a large pre-existing backlog, don't force
+  a binary green-or-blanket-ignore choice — pin the rules you can bring to a zero
+  baseline to `error`, downgrade the ones with an irreducible backlog to `warn`, and
+  track that backlog as follow-up issues. A strip is "green" once the `error`-tier rules
+  pass; new `warn`-tier findings it exposes in retained code are the sibling ticket's
+  cleanup, not a blocker.
+- A strip-module spec's stated scope (its file list, or "the workspace `package.json`"
+  it names) is incomplete by construction: deleting the last consumer of a helper file,
+  or the last importer of a dependency, orphans it — and the `error`-tier knip rules
+  above will fail CI on that orphan even though it's outside the spec's literal edit
+  list. After excising a domain, grep for every helper/dependency the removed code
+  touched, including every `package.json` in the monorepo (a workspace can consume a
+  hoisted root dependency without declaring it, so the orphan can surface at the root
+  instead of the workspace the spec named). Delete what's now unreferenced — justified
+  as an addition beyond the spec's list in the PR body, never left in or silenced with a
+  knip ignore — and run `yarn install` afterward so the lockfile's merged version range
+  collapses.
 
 ## Migration rules
 
