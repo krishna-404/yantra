@@ -7,10 +7,17 @@ import {
 /**
  * App-level secrets for the harness (encrypted at rest, write-only API).
  * Keys are a closed set — each one exists because a runner needs it, not as
- * a general vault. CLAUDE_CODE_OAUTH_TOKEN feeds the execute containers.
+ * a general vault. CLAUDE_CODE_OAUTH_TOKEN feeds the execute/advise/grade
+ * containers; the *_API_KEY entries feed the Phase-3 free-lane runner
+ * (OpenCode container) so cheaper models can do T0/T1 work.
  */
 
-export const APP_SECRET_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN"] as const;
+export const APP_SECRET_KEYS = [
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"NVIDIA_API_KEY",
+	"GEMINI_API_KEY",
+	"GROQ_API_KEY",
+] as const;
 export type AppSecretKey = (typeof APP_SECRET_KEYS)[number];
 
 export interface AppSecretView {
