@@ -491,23 +491,87 @@ function ProjectsCard({
 }
 
 /** Free-AI lane keys (Phase 3) — stored encrypted; used by the OpenCode runner. */
-const LANE_KEYS: { key: string; label: string; help: string }[] = [
-	{
-		key: "NVIDIA_API_KEY",
-		label: "NVIDIA",
-		help: "nvapi-… — free tier at build.nvidia.com (integrate.api.nvidia.com/v1)",
-	},
-	{
-		key: "GEMINI_API_KEY",
-		label: "Gemini",
-		help: "AI Studio key — free tier at aistudio.google.com",
-	},
-	{
-		key: "GROQ_API_KEY",
-		label: "Groq",
-		help: "gsk_… — free tier at console.groq.com",
-	},
-];
+const LANE_KEYS: { key: string; laneId: string; label: string; help: string }[] =
+	[
+		{
+			key: "NVIDIA_API_KEY",
+			laneId: "nvidia",
+			label: "NVIDIA",
+			help: "nvapi-… — free tier at build.nvidia.com (integrate.api.nvidia.com/v1)",
+		},
+		{
+			key: "GEMINI_API_KEY",
+			laneId: "gemini",
+			label: "Gemini",
+			help: "AI Studio key — free tier at aistudio.google.com",
+		},
+		{
+			key: "GROQ_API_KEY",
+			laneId: "groq",
+			label: "Groq",
+			help: "gsk_… — free tier at console.groq.com",
+		},
+	];
+
+/** "Test" button that pings a lane's provider and shows the result inline. */
+function LaneTest({ laneId, label }: { laneId: string; label: string }) {
+	const [busy, setBusy] = useState(false);
+	const [result, setResult] = useState<string | null>(null);
+	const [ok, setOk] = useState<boolean | null>(null);
+
+	const test = async () => {
+		setBusy(true);
+		setResult(null);
+		try {
+			const res = await fetch(`${base}/yantra/lanes/smoke`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ lane: laneId }),
+			});
+			if (!res.ok) throw new Error(String(res.status));
+			const r = (await res.json()) as {
+				ok: boolean;
+				modelCount: number;
+				sampleModel: string | null;
+				latencyMs: number;
+				error: string | null;
+			};
+			setOk(r.ok);
+			setResult(
+				r.ok
+					? `✓ reached ${label}: ${r.modelCount} models${r.sampleModel ? ` (e.g. ${r.sampleModel})` : ""} · ${r.latencyMs}ms`
+					: `✗ ${r.error ?? "failed"}`,
+			);
+		} catch (err) {
+			setOk(false);
+			setResult(`✗ ${err instanceof Error ? err.message : "failed"}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<Stack
+			direction="row"
+			spacing={1}
+			alignItems="center"
+			sx={{ mt: 0.5, ml: { md: "98px" } }}
+		>
+			<Button size="small" onClick={test} disabled={busy}>
+				{busy ? "Testing…" : "Test"}
+			</Button>
+			{result && (
+				<Typography
+					variant="caption"
+					sx={{ color: ok ? "success.main" : "error.main" }}
+				>
+					{result}
+				</Typography>
+			)}
+		</Stack>
+	);
+}
 
 /** One labelled, write-only secret field with set/not-set status. */
 function SecretField({
@@ -700,24 +764,28 @@ function RunnerInfraCard() {
 						Free-AI lanes (Phase 3, optional)
 					</Typography>
 					<Typography variant="caption" color="text.secondary">
-						Cheaper models for simple tasks. Stored encrypted now; they start
-						doing work once the free-lane runner ships. Planning and grading
-						always stay on Claude.
+						Cheaper models for simple tasks. Save a key, then "Test" to confirm
+						it reaches the provider. They start doing real work once the
+						free-lane runner ships; planning and grading always stay on Claude.
 					</Typography>
 				</Box>
 				<Stack spacing={2}>
 					{LANE_KEYS.map((lane) => (
-						<SecretField
-							key={lane.key}
-							label={lane.label}
-							keyName={lane.key}
-							hint={hintFor(lane.key)}
-							help={lane.help}
-							value={inputs[lane.key] ?? ""}
-							disabled={busy}
-							onChange={(v) => setInputs((p) => ({ ...p, [lane.key]: v }))}
-							onSave={() => saveSecret(lane.key)}
-						/>
+						<Box key={lane.key}>
+							<SecretField
+								label={lane.label}
+								keyName={lane.key}
+								hint={hintFor(lane.key)}
+								help={lane.help}
+								value={inputs[lane.key] ?? ""}
+								disabled={busy}
+								onChange={(v) => setInputs((p) => ({ ...p, [lane.key]: v }))}
+								onSave={() => saveSecret(lane.key)}
+							/>
+							{hintFor(lane.key) && (
+								<LaneTest laneId={lane.laneId} label={lane.label} />
+							)}
+						</Box>
 					))}
 				</Stack>
 
