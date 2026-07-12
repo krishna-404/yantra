@@ -1,8 +1,10 @@
 import { db } from "@backend/db/db";
 import { runAdvise } from "@backend/modules/yantra/services/advise_runner.yantra.service";
 import { getAppSecretValue } from "@backend/modules/yantra/services/app_secrets.yantra.service";
+import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { runExecute } from "@backend/modules/yantra/services/execute_runner.yantra.service";
 import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
+import { candidateModels } from "@backend/modules/yantra/services/lanes.yantra.service";
 import { openSecret } from "@backend/modules/yantra/services/secret_box.yantra.service";
 import {
 	addIssueLabels,
@@ -109,6 +111,40 @@ export const runLiveTurn = async (input: {
 		return;
 	}
 
+	const tier = advise.tier || "T1";
+
+	// Execution lane: when free models are configured, EVERY task runs through
+	// the parallel ensemble (operator directive 2026-07-12 — every task to ≥3
+	// LLMs). Advise stays on Claude (the plan gate); the ensemble writes the
+	// code and a free judge synthesises. Falls back to the Claude execute
+	// container when NVIDIA isn't set up (or too few models exist). The self-
+	// check gate + grade + rails are identical either way, so the lane choice
+	// never affects what can merge.
+	const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
+	const models = nvidiaKey
+		? candidateModels("execute", ["nvidia"])
+				.slice(0, 3)
+				.map((m) => m.ref)
+		: [];
+	const judge = nvidiaKey ? candidateModels("grade", ["nvidia"])[0]?.ref : null;
+
+	if (nvidiaKey && models.length >= 2 && judge) {
+		await runEnsembleExecute({
+			repo,
+			baseBranch,
+			ghToken,
+			nvidiaKey,
+			models,
+			judge,
+			issue: input.issue,
+			turn: input.turn,
+			tier,
+			adviseJson: advise.verdictJson,
+		});
+		// Ensemble handles its own park/labels/telemetry on every path.
+		return;
+	}
+
 	await runExecute({
 		repo,
 		baseBranch,
@@ -116,7 +152,7 @@ export const runLiveTurn = async (input: {
 		claudeToken,
 		issue: input.issue,
 		turn: input.turn,
-		tier: advise.tier || "T1",
+		tier,
 		adviseJson: advise.verdictJson,
 	});
 	// Execute handles its own park/labels/telemetry on every path.
