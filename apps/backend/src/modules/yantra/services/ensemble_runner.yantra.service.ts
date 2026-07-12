@@ -18,47 +18,77 @@ import { logger } from "@backend/utils/logger.utils";
 import { ulid } from "ulid";
 
 /**
- * ENSEMBLE EXECUTE (Phase 3, operator directive 2026-07-12) — every task goes
- * to N free models, then a strong free model SYNTHESISES one answer from all N.
+ * ENSEMBLE EXECUTE (Phase 3, operator directives 2026-07-12) — every task runs
+ * through N free models IN PARALLEL, then a strong free model SYNTHESISES one
+ * answer from all N candidate diffs.
  *
- * Why: divergence between models on the same spec is the scoring signal ("what
- * is each model better at"); combining their strengths covers more of the
- * solution space than any single model. The operator chose synthesis (not
- * pick-best, not mechanical merge): the judge blends the candidates, and the
- * blended diff must still pass the full self-check gate before a PR opens.
+ * Parallelism matters: a task can't wait for three models to answer one after
+ * another. So each candidate runs in its OWN container concurrently (clone +
+ * solve + push its own branch), and only the judge waits — for whichever
+ * candidates finished. Wall-time ≈ one model + one judge, not the sum of all.
  *
- * One container, one clone/install: each model solves the spec on its own
- * branch (captured as a diff), then the judge reads all diffs + the spec and
- * edits the repo to implement the synthesised solution on the PR branch. This
- * keeps the whole ensemble atomic and within the D18 container caps — no
- * cross-container branch coordination.
+ * The operator chose synthesis (not pick-best, not mechanical merge): the judge
+ * blends the strongest parts of each candidate, and the blended diff must still
+ * pass the full self-check gate before a PR opens. Grade + rails then treat an
+ * ensemble PR exactly like any other — the lane is invisible downstream.
  *
- * The lane is invisible downstream: the PR grade + rails treat an ensemble PR
- * exactly like any other. Telemetry records one row per candidate model plus
- * the synthesis, so scorecards (D26) can grade each model over time.
+ * Candidate branches are throwaway (`<pr-branch>-c1…cN`); the judge deletes
+ * them after opening the PR. Telemetry records one row per candidate model plus
+ * the synthesis so scorecards (D26) can grade each model over time.
  */
 
 const NO_DIFF_EXIT = 21;
-const ENSEMBLE_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3h: N candidates + judge, serial
+const CAND_TIMEOUT_MS = 90 * 60 * 1000; // one model, one container
+const JUDGE_TIMEOUT_MS = 90 * 60 * 1000; // synthesis + self-check + PR
 
 export interface EnsembleOutcome {
 	kind: "pr_open" | "parked" | "no_diff";
 	pr: number;
 	models: string[];
 	judge: string;
+	candidatesSucceeded: number;
 }
 
-// v0's execute BOOTSTRAP shape, extended to a candidate loop + a synthesis
-// judge. Every model ref arrives via env (MODELS_B64 newline list, JUDGE_MODEL);
-// the provider key arrives as $NVIDIA_API_KEY, read by opencode.json. The WORK
-// heredoc is single-quoted so bash expands nothing at write-time — env vars
-// resolve at run-time under the `node` user (su -p preserves the environment).
-export const buildEnsembleScript = (): string => `set -euo pipefail
+// ── container scripts ───────────────────────────────────────────────────────
+// Both single-quote the inner WORK heredoc so bash expands nothing at
+// write-time; env vars resolve at run-time under the `node` user (su -p keeps
+// the environment). `\${VAR}` escapes JS interpolation so bash sees $VAR.
+
+/** One candidate: solve the spec, push its own branch, no PR. */
+const buildCandidateScript = (): string => `set -euo pipefail
 pg_ctlcluster "$(ls /etc/postgresql | head -1)" main start
 su postgres -c "psql -qc \\"ALTER USER postgres PASSWORD 'postgres';\\""
 mkdir -p /workspace
 echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
-echo "$MODELS_B64" | base64 -d > /workspace/models.txt
+cat > /workspace/work.sh <<'WORK'
+set -euo pipefail
+unset NOVU_SECRET_KEY NOVU_API_URL
+export GIT_TERMINAL_PROMPT=0
+git config --global user.name "yantra-bot"
+git config --global user.email "yantra-bot@users.noreply.github.com"
+cd /workspace
+git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:\${GH_TOKEN}@github.com/\${YANTRA_REPO}.git" repo
+cd repo
+git checkout -q -B "$CAND_BRANCH" "origin/$BASE_BRANCH"
+yarn install --frozen-lockfile >/workspace/install.log 2>&1
+yarn build --filter='./packages/*' >>/workspace/install.log 2>&1 || true
+opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || true
+git add -A >/dev/null 2>&1 || true
+git commit -q -m "candidate: $MODEL" >/dev/null 2>&1 || true
+git diff --quiet "origin/$BASE_BRANCH"..HEAD 2>/dev/null && { echo "NO_DIFF"; exit ${NO_DIFF_EXIT}; }
+git push --quiet -u origin "$CAND_BRANCH" --force
+WORK
+chown -R node:node /workspace
+su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
+`;
+
+/** The judge: gather candidate diffs, synthesise on the PR branch, gate, PR. */
+const buildJudgeScript = (): string => `set -euo pipefail
+pg_ctlcluster "$(ls /etc/postgresql | head -1)" main start
+su postgres -c "psql -qc \\"ALTER USER postgres PASSWORD 'postgres';\\""
+mkdir -p /workspace
+echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
+echo "$CAND_BRANCHES_B64" | base64 -d > /workspace/cands.txt
 cat > /workspace/work.sh <<'WORK'
 set -euo pipefail
 unset NOVU_SECRET_KEY NOVU_API_URL
@@ -69,31 +99,21 @@ cd /workspace
 git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:\${GH_TOKEN}@github.com/\${YANTRA_REPO}.git" repo
 cd repo
 BASE="origin/$BASE_BRANCH"
+git checkout -q -B "$BRANCH" "$BASE"
 
 yarn install --frozen-lockfile >/workspace/selfcheck.log 2>&1
 yarn build --filter='./packages/*' >>/workspace/selfcheck.log 2>&1 || \\
 	echo "WARN: package pre-build returned non-zero; check-types may false-red" >>/workspace/selfcheck.log
 
-# ---- candidates: each model solves the spec on its own branch ----
+# gather each candidate's diff (skip any branch that never got pushed)
 i=0
-CAND_SUMMARY=""
-while IFS= read -r MODEL <&3; do
-	[ -z "$MODEL" ] && continue
+while IFS= read -r CB <&3; do
+	[ -z "$CB" ] && continue
+	git fetch -q origin "$CB" 2>/dev/null || continue
 	i=$((i+1))
-	git reset --hard -q "$BASE"; git clean -fdq
-	git checkout -q -B "cand-$i" "$BASE"
-	echo "=== candidate $i: $MODEL ===" >>/workspace/agents.log
-	opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null >>/workspace/agents.log 2>&1 || true
-	git add -A >/dev/null 2>&1 || true
-	git commit -q -m "candidate $i ($MODEL)" >/dev/null 2>&1 || true
-	git diff "$BASE".."cand-$i" > "/workspace/cand-$i.patch" 2>/dev/null || true
-	LINES=$(wc -l < "/workspace/cand-$i.patch" 2>/dev/null | tr -d ' ')
-	CAND_SUMMARY="\${CAND_SUMMARY}- candidate $i: $MODEL (\${LINES:-0} diff lines)"$'\\n'
-done 3< /workspace/models.txt
+	git diff "$BASE".."origin/$CB" > "/workspace/cand-$i.patch" 2>/dev/null || true
+done 3< /workspace/cands.txt
 
-# ---- judge synthesises the single best solution on the PR branch ----
-git reset --hard -q "$BASE"; git clean -fdq
-git checkout -q -B "$BRANCH" "$BASE"
 {
 	echo "You are the Yantra SYNTHESIS judge. Below is a Product Spec and $i independent candidate solutions (unified diffs) produced by different models for the SAME spec. Produce the SINGLE BEST solution by combining the strongest parts of each — do not merely copy one candidate. Edit the files in this repository to implement your synthesised solution. It MUST pass lint, type-check, knip and tests; you may not weaken, skip, or delete tests to make them pass."
 	echo
@@ -129,15 +149,21 @@ Fix the failures. You may not weaken or skip tests. Commit the fix." \\
 	selfcheck >>/workspace/selfcheck.log 2>&1
 fi
 
+# clean up throwaway candidate branches regardless of outcome
+while IFS= read -r CB <&3; do
+	[ -z "$CB" ] && continue
+	git push -q origin --delete "$CB" 2>/dev/null || true
+done 3< /workspace/cands.txt
+
 git diff --quiet "$BASE"..HEAD 2>/dev/null && { echo "NO_DIFF"; exit ${NO_DIFF_EXIT}; }
 
 git push --quiet -u origin "$BRANCH"
 
 TITLE=$(echo "$TITLE_B64" | base64 -d)
 {
-	echo "Automated Yantra change for #$ISSUE via $i-model ensemble (synthesis judge)."
-	echo; echo "## Candidate models"; printf '%b' "$CAND_SUMMARY"
-	echo; echo "Synthesis judge: $JUDGE_MODEL"
+	echo "Automated Yantra change for #$ISSUE via $i-model ensemble (parallel candidates, synthesis judge)."
+	echo; echo "Candidate models: $CAND_MODELS"
+	echo "Synthesis judge: $JUDGE_MODEL"
 	echo; echo "## Judge synthesis notes"; echo '\`\`\`'
 	tail -40 /workspace/judge-out.log; echo '\`\`\`'
 	echo; echo "## Self-check tail"; echo '\`\`\`'
@@ -151,12 +177,23 @@ chown -R node:node /workspace
 su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
 `;
 
+// Exported for the contract test — pins the two-phase script shape.
+export const ensembleScripts = { buildCandidateScript, buildJudgeScript };
+
+// ── orchestration ───────────────────────────────────────────────────────────
+
+interface CandResult {
+	model: string;
+	branch: string;
+	ok: boolean;
+}
+
 export const runEnsembleExecute = async (input: {
 	repo: string;
 	baseBranch: string;
 	ghToken: string;
 	nvidiaKey: string;
-	/** ≥2 execute model refs; each writes its own candidate diff. */
+	/** ≥2 execute model refs; each solves in its own parallel container. */
 	models: string[];
 	/** Grade-role model that synthesises the final solution (never an executor). */
 	judge: string;
@@ -193,70 +230,64 @@ export const runEnsembleExecute = async (input: {
 	if (conventions)
 		promptParts.push(`\n## .brain/conventions.md\n\n${conventions}`);
 	const prompt = promptParts.join("\n");
+	const promptB64 = Buffer.from(prompt, "utf8").toString("base64");
 
-	let lastOutput = "no output";
-	let ok = false;
-	let noDiff = false;
-	try {
-		const result = await runYantraContainer({
-			name: `yantra-ens-${input.issue}-${ulid().toLowerCase()}`,
-			image: EXEC_IMAGE_OC,
-			script: buildEnsembleScript(),
-			env: {
-				PROMPT_B64: Buffer.from(prompt, "utf8").toString("base64"),
-				MODELS_B64: Buffer.from(input.models.join("\n"), "utf8").toString(
-					"base64",
-				),
-				JUDGE_MODEL: input.judge,
-				BRANCH: branch,
-				ISSUE: String(input.issue),
-				TIER: input.tier,
-				BASE_BRANCH: input.baseBranch,
-				TITLE_B64: Buffer.from(issue.title, "utf8").toString("base64"),
-				YANTRA_REPO: input.repo,
-				GH_TOKEN: input.ghToken,
-				NVIDIA_API_KEY: input.nvidiaKey,
-			},
-			timeoutMs: ENSEMBLE_TIMEOUT_MS,
-		});
-		lastOutput = result.output;
-		if (result.exitCode === 0) ok = true;
-		else if (result.exitCode === NO_DIFF_EXIT) noDiff = true;
-		else
-			logger.warn(
-				{ exitCode: result.exitCode, issue: input.issue },
-				"ensemble execute failed",
-			);
-	} catch (err) {
-		lastOutput = err instanceof Error ? err.message : String(err);
-		logger.warn({ err, issue: input.issue }, "ensemble run error");
-	}
-
-	// One telemetry row per candidate model (participation + scoring key), plus
-	// the synthesis row carrying the PR. All share the turn so a scorecard can
-	// join them back into one ensemble run.
-	const recordCandidates = async () => {
-		for (const model of input.models) {
-			await recordRun({
-				repo: input.repo,
-				baseBranch: input.baseBranch,
-				turn: input.turn,
-				issue: input.issue,
-				role: "execute",
-				model,
-				lane: "ensemble",
-				promptVersion: pv,
-				tier: input.tier,
-				taskType,
-				startedAt: started,
-				outcome: "candidate",
-				pr: 0,
-			});
-		}
+	const baseEnv = {
+		PROMPT_B64: promptB64,
+		BASE_BRANCH: input.baseBranch,
+		YANTRA_REPO: input.repo,
+		GH_TOKEN: input.ghToken,
+		NVIDIA_API_KEY: input.nvidiaKey,
 	};
 
-	if (!ok) {
-		await recordCandidates();
+	// ── Phase 1: candidates in parallel, each in its own container ──────────
+	const candScript = buildCandidateScript();
+	const candResults: CandResult[] = await Promise.all(
+		input.models.map(async (model, idx): Promise<CandResult> => {
+			const candBranch = `${branch}-c${idx + 1}`;
+			try {
+				const r = await runYantraContainer({
+					name: `yantra-cand-${input.issue}-${idx + 1}-${ulid().toLowerCase()}`,
+					image: EXEC_IMAGE_OC,
+					script: candScript,
+					env: { ...baseEnv, MODEL: model, CAND_BRANCH: candBranch },
+					timeoutMs: CAND_TIMEOUT_MS,
+				});
+				return { model, branch: candBranch, ok: r.exitCode === 0 };
+			} catch (err) {
+				logger.warn(
+					{ err, issue: input.issue, model },
+					"ensemble candidate container error",
+				);
+				return { model, branch: candBranch, ok: false };
+			}
+		}),
+	);
+
+	const succeeded = candResults.filter((c) => c.ok);
+	const recordCandidates = (outcome: string) =>
+		Promise.all(
+			candResults.map((c) =>
+				recordRun({
+					repo: input.repo,
+					baseBranch: input.baseBranch,
+					turn: input.turn,
+					issue: input.issue,
+					role: "execute",
+					model: c.model,
+					lane: "ensemble",
+					promptVersion: pv,
+					tier: input.tier,
+					taskType,
+					startedAt: started,
+					outcome: c.ok ? outcome : "candidate_failed",
+					pr: 0,
+				}),
+			),
+		);
+
+	const park = async (reason: string, outcome: string) => {
+		await recordCandidates("candidate");
 		await recordRun({
 			repo: input.repo,
 			baseBranch: input.baseBranch,
@@ -269,10 +300,9 @@ export const runEnsembleExecute = async (input: {
 			tier: input.tier,
 			taskType,
 			startedAt: started,
-			outcome: noDiff ? "no_diff" : "infra_error",
+			outcome,
 			pr: 0,
 		});
-		const tail = lastOutput.slice(-1500);
 		await addIssueLabels(
 			input.repo,
 			input.issue,
@@ -288,14 +318,62 @@ export const runEnsembleExecute = async (input: {
 		await commentOnIssue(
 			input.repo,
 			input.issue,
-			`🤖 yantra ensemble execute parked (${noDiff ? "empty diff" : "infra/self-check failure"}). Models: ${input.models.join(", ")}; judge ${input.judge}. Tail:\n\n\`\`\`\n${tail}\n\`\`\``,
+			`🤖 yantra ensemble parked (${reason}). Models: ${input.models.join(", ")}; judge ${input.judge}.`,
 			input.ghToken,
 		);
+	};
+
+	if (succeeded.length === 0) {
+		await park("every candidate failed or produced no diff", "infra_error");
 		return {
-			kind: noDiff ? "no_diff" : "parked",
+			kind: "parked",
 			pr: 0,
 			models: input.models,
 			judge: input.judge,
+			candidatesSucceeded: 0,
+		};
+	}
+
+	// ── Phase 2: judge synthesises from the candidate branches ──────────────
+	let judgeOk = false;
+	let judgeNoDiff = false;
+	try {
+		const r = await runYantraContainer({
+			name: `yantra-judge-${input.issue}-${ulid().toLowerCase()}`,
+			image: EXEC_IMAGE_OC,
+			script: buildJudgeScript(),
+			env: {
+				...baseEnv,
+				JUDGE_MODEL: input.judge,
+				BRANCH: branch,
+				ISSUE: String(input.issue),
+				TIER: input.tier,
+				TITLE_B64: Buffer.from(issue.title, "utf8").toString("base64"),
+				CAND_BRANCHES_B64: Buffer.from(
+					succeeded.map((c) => c.branch).join("\n"),
+					"utf8",
+				).toString("base64"),
+				CAND_MODELS: succeeded.map((c) => c.model).join(", "),
+			},
+			timeoutMs: JUDGE_TIMEOUT_MS,
+		});
+		if (r.exitCode === 0) judgeOk = true;
+		else if (r.exitCode === NO_DIFF_EXIT) judgeNoDiff = true;
+	} catch (err) {
+		logger.warn({ err, issue: input.issue }, "ensemble judge container error");
+	}
+
+	if (!judgeOk) {
+		await park(
+			judgeNoDiff ? "judge produced empty diff" : "judge/self-check failure",
+			judgeNoDiff ? "no_diff" : "infra_error",
+		);
+		return {
+			kind: judgeNoDiff ? "no_diff" : "parked",
+			pr: 0,
+			models: input.models,
+			judge: input.judge,
+			candidatesSucceeded: succeeded.length,
 		};
 	}
 
@@ -312,7 +390,7 @@ export const runEnsembleExecute = async (input: {
 		pr = 0;
 	}
 
-	await recordCandidates();
+	await recordCandidates("candidate");
 	await recordRun({
 		repo: input.repo,
 		baseBranch: input.baseBranch,
@@ -349,8 +427,20 @@ export const runEnsembleExecute = async (input: {
 			input.ghToken,
 		);
 	logger.info(
-		{ issue: input.issue, pr, models: input.models, judge: input.judge },
+		{
+			issue: input.issue,
+			pr,
+			models: input.models,
+			judge: input.judge,
+			candidatesSucceeded: succeeded.length,
+		},
 		"ensemble execute done, PR open",
 	);
-	return { kind: "pr_open", pr, models: input.models, judge: input.judge };
+	return {
+		kind: "pr_open",
+		pr,
+		models: input.models,
+		judge: input.judge,
+		candidatesSucceeded: succeeded.length,
+	};
 };
