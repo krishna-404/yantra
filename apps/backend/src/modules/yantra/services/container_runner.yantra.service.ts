@@ -11,7 +11,14 @@ import Docker from "dockerode";
  */
 
 const RUN_LABEL = "yantra-run";
-const MAX_PARALLEL_RUNS = 3; // D18
+// D18 default of 3; raise via YANTRA_MAX_PARALLEL once the VPS has headroom
+// (each run is 4 GB / 2 CPU, so 3 = 12 GB / 6 CPU). One ensemble task alone
+// spends N candidate slots + 1 judge, so a bigger box wanting task-parallelism
+// bumps this.
+const MAX_PARALLEL_RUNS = Math.max(
+	1,
+	Number(process.env.YANTRA_MAX_PARALLEL) || 3,
+);
 const MEMORY_BYTES = 4 * 1024 * 1024 * 1024; // 4g
 const NANO_CPUS = 2_000_000_000; // 2 cpus
 
