@@ -1,15 +1,18 @@
 import { db } from "@backend/db/db";
 import {
 	APP_SECRET_KEYS,
+	getAppSecretValue,
 	listAppSecrets,
 	setAppSecret,
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
 import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
+import { runFreeLaneExecute } from "@backend/modules/yantra/services/free_lane_runner.yantra.service";
 import {
 	getKillSwitch,
 	setKillSwitch,
 } from "@backend/modules/yantra/services/kill_switch.yantra.service";
 import {
+	candidateModels,
 	listLanes,
 	runLaneSmoke,
 } from "@backend/modules/yantra/services/lanes.yantra.service";
@@ -20,11 +23,19 @@ import {
 	setProjectEnabled,
 	setProjectMode,
 } from "@backend/modules/yantra/services/projects.yantra.service";
+import { openSecret } from "@backend/modules/yantra/services/secret_box.yantra.service";
 import {
 	importTelemetryRows,
 	parseTelemetryJsonl,
 } from "@backend/modules/yantra/services/telemetry_import.yantra.service";
+import {
+	addIssueLabels,
+	commentOnIssue,
+	removeIssueLabel,
+} from "@backend/modules/yantra/services/turn_shared.yantra.service";
 import { rpcSuperAdminProcedure } from "@backend/procedures/super_admin.procedure";
+import { logger } from "@backend/utils/logger.utils";
+import { ulid } from "ulid";
 import { z } from "zod";
 
 /**
@@ -317,6 +328,76 @@ const laneSmokeRoute = rpcSuperAdminProcedure
 	)
 	.handler(async ({ input }) => runLaneSmoke(input.lane));
 
+// Manual "try the free lane on this issue" trigger — the on-demand path to
+// NVIDIA's first real task, before auto-routing exists. Claims the issue, then
+// fires the free-lane container detached (the run takes minutes). Auto-routing
+// by scorecard (D26) comes after this proves out.
+const tryFreeLaneRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/lanes/try", tags: ["Yantra"] })
+	.input(
+		z.object({
+			projectId: z.string().min(1),
+			issue: z.number().int().positive(),
+			model: z.string().min(1).optional(),
+			tier: z.string().default("T0"),
+		}),
+	)
+	.output(
+		z.object({
+			started: z.boolean(),
+			model: z.string(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("id", "repo", "baseBranch", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+
+		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
+		if (!nvidiaKey) {
+			return { started: false, model: "", error: "NVIDIA_API_KEY not set" };
+		}
+		// Default to the first NVIDIA executor in the catalog; validate any override.
+		const candidates = candidateModels("execute", ["nvidia"]);
+		const modelRef = input.model ?? candidates[0]?.ref;
+		if (!modelRef || !candidates.some((c) => c.ref === modelRef)) {
+			return {
+				started: false,
+				model: modelRef ?? "",
+				error: "model is not a known NVIDIA executor",
+			};
+		}
+
+		const turn = ulid();
+		await addIssueLabels(project.repo, input.issue, ["agent:working"], ghToken);
+		await removeIssueLabel(project.repo, input.issue, "spec:ready", ghToken);
+		await commentOnIssue(
+			project.repo,
+			input.issue,
+			`🤖 yantra claim run=${turn} role=execute lane=free model=${modelRef}`,
+			ghToken,
+		);
+
+		// Detached — the container run is long; don't block the HTTP response.
+		void runFreeLaneExecute({
+			repo: project.repo,
+			baseBranch: project.baseBranch,
+			ghToken,
+			nvidiaKey,
+			modelRef,
+			issue: input.issue,
+			turn,
+			tier: input.tier,
+			adviseJson: {},
+		}).catch((err) =>
+			logger.error({ err, issue: input.issue }, "free-lane try failed"),
+		);
+
+		return { started: true, model: modelRef, error: null };
+	});
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
@@ -333,4 +414,5 @@ export const yantraRouter = {
 	dockerStatus: dockerStatusRoute,
 	listLanes: listLanesRoute,
 	laneSmoke: laneSmokeRoute,
+	tryFreeLane: tryFreeLaneRoute,
 };

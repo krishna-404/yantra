@@ -42,6 +42,8 @@ export const runYantraContainer = async (opts: {
 	script: string; // bash source, becomes SCRIPT_B64
 	env: Record<string, string>;
 	timeoutMs: number;
+	/** Container image — defaults to the Claude exec image; free lanes pass the OpenCode one. */
+	image?: string;
 }): Promise<ContainerRunResult> => {
 	if ((await runningYantraContainers()) >= MAX_PARALLEL_RUNS) {
 		throw new RunnerAtCapacityError();
@@ -53,7 +55,7 @@ export const runYantraContainer = async (opts: {
 	];
 
 	const container = await docker.createContainer({
-		Image: EXEC_IMAGE,
+		Image: opts.image ?? EXEC_IMAGE,
 		name: opts.name,
 		Cmd: ["bash", "-c", 'echo "$SCRIPT_B64" | base64 -d | bash'],
 		Env: envArray,
