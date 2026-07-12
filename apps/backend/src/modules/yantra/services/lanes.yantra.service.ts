@@ -156,3 +156,104 @@ export const listLanes = async (): Promise<LaneView[]> => {
 	);
 	return results;
 };
+
+// ── model catalog (Phase 3, D26) ────────────────────────────────────────────
+// "Different models for different tasks": fast models execute (many tool
+// calls, latency matters); strong-but-slow models grade (quality matters,
+// latency tolerated). This seed is the STARTING pool — the scorecards + nightly
+// catalog-diff refine it: retired models (e.g. the Qwen coder EOL'd 2026-05-12)
+// drop out, new ones enter once they have a few graded runs. Planning/grading
+// never run on the model that wrote the code (no self-grading); a strong FREE
+// model may grade, audited periodically by Claude (D26).
+
+export type LaneRole = "execute" | "grade";
+export type LaneSource = "nvidia" | "opencode";
+
+export interface LaneModel {
+	/** OpenCode model ref `provider/model`, e.g. "nvidia/qwen/qwen3-coder-480b-a35b-instruct". */
+	ref: string;
+	label: string;
+	/** "nvidia" uses NVIDIA_API_KEY; "opencode" uses the OpenCode login token. */
+	source: LaneSource;
+	roles: LaneRole[];
+	/** Pre-scorecard speed hint — a tie-breaker only until real timing data exists. */
+	speed: "fast" | "medium" | "slow";
+}
+
+export const LANE_MODELS: LaneModel[] = [
+	// executors — fast enough to drive many tool calls
+	{
+		ref: "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
+		label: "Qwen3 Coder 480B (MoE)",
+		source: "nvidia",
+		roles: ["execute"],
+		speed: "medium",
+	},
+	{
+		ref: "nvidia/deepseek-ai/deepseek-v4-flash",
+		label: "DeepSeek V4 Flash",
+		source: "nvidia",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "nvidia/meta/llama-3.3-70b-instruct",
+		label: "Llama 3.3 70B",
+		source: "nvidia",
+		roles: ["execute"],
+		speed: "medium",
+	},
+	// graders — strongest available; latency tolerated
+	{
+		ref: "nvidia/qwen/qwen3.5-397b-a17b",
+		label: "Qwen3.5 397B (MoE)",
+		source: "nvidia",
+		roles: ["grade"],
+		speed: "slow",
+	},
+	{
+		ref: "nvidia/deepseek-ai/deepseek-v4-pro",
+		label: "DeepSeek V4 Pro",
+		source: "nvidia",
+		roles: ["grade"],
+		speed: "slow",
+	},
+	{
+		ref: "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+		label: "Nemotron 3 Ultra 550B",
+		source: "nvidia",
+		roles: ["grade"],
+		speed: "slow",
+	},
+	// OpenCode-native free models — enabled once the OpenCode token is stored
+	{
+		ref: "opencode/deepseek-v4-flash-free",
+		label: "DeepSeek V4 Flash (OpenCode free)",
+		source: "opencode",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "opencode/north-mini-code-free",
+		label: "North Mini Code (OpenCode free)",
+		source: "opencode",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "opencode/nemotron-3-ultra-free",
+		label: "Nemotron 3 Ultra (OpenCode free)",
+		source: "opencode",
+		roles: ["grade"],
+		speed: "slow",
+	},
+];
+
+/** Candidate models for a role, limited to sources whose credential is present. */
+export const candidateModels = (
+	role: LaneRole,
+	availableSources: LaneSource[],
+): LaneModel[] =>
+	LANE_MODELS.filter(
+		(m) => m.roles.includes(role) && availableSources.includes(m.source),
+	);

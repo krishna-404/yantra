@@ -201,3 +201,21 @@ staging app but never the control centre; the control centre itself only changes
 deliberate promotion. Staging's own deployment keeps a cockpit for preview but holds
 no projects. Corollary: during Phase 2, promote main more often than usual — each
 promotion is the human gate that keeps the surgeon separate from the patient.
+
+## D26 — Continuous, self-maintaining multi-model evaluation & routing
+_2026-07-07 · status: locked_
+
+Model choice is a graded, self-correcting loop, not a fixed config. (1) A nightly
+catalog-diff lists each lane's live models and records new/retired ones (models DO get
+EOL'd — e.g. NVIDIA sunset qwen2.5-coder-32b 2026-05-12). (2) Scorecards per
+(model × task_type × tier) accumulate first-try pass rate + grader score (primary) and
+median wall-time (secondary — quality ≫ speed ≫ cost; free ≈ $0). (3) Learned routing
+picks the best model per task-type from the scorecards, speed as tie-break, excluding
+throttled/retired/confidential-blocked. Fast models execute; strong-but-slow models
+grade. **Grading may run on a strong FREE model** (not a permanent Claude reservation),
+under three invariants: the grader is never the model that wrote the code; the
+deterministic gate (CI + rails) is unchanged and a model can't merge what tests reject;
+and Claude periodically re-grades a sample to audit the free grader's false-pass rate,
+pulling it if it drifts. A retired/410 model instantly falls back to Claude so it can
+never wedge a task. Supersedes the Phase-3 plan's "advise/grade stay claude-max
+permanently" clause (R3) — that reservation becomes an audited, data-driven choice.
