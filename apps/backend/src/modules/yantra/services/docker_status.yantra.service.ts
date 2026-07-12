@@ -15,6 +15,8 @@ export interface DockerStatus {
 }
 
 export const EXEC_IMAGE = "yantra-exec:0";
+/** Phase-3 free-lane image (OpenCode CLI driving a free provider). */
+export const EXEC_IMAGE_OC = "yantra-exec-oc:0";
 
 export const getDockerStatus = async (): Promise<DockerStatus> => {
 	const docker = new Docker({ socketPath: "/var/run/docker.sock" });
