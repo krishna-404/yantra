@@ -26,6 +26,10 @@ import {
 } from "@backend/modules/yantra/services/projects.yantra.service";
 import { openSecret } from "@backend/modules/yantra/services/secret_box.yantra.service";
 import {
+	createReadySpec,
+	groomIdea,
+} from "@backend/modules/yantra/services/spec_intake.yantra.service";
+import {
 	importTelemetryRows,
 	parseTelemetryJsonl,
 } from "@backend/modules/yantra/services/telemetry_import.yantra.service";
@@ -505,8 +509,53 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 		return { started: true, models, judge, error: null };
 	});
 
+// ── spec intake (Phase 4, chat-first) ───────────────────────────────────────
+// The supply side of the factory: an idea is groomed into a draft spec (no
+// side effects), then a separate approve step files it as a spec:ready issue
+// the tick claims. Two steps on purpose — the operator sees the draft before
+// anything becomes real work.
+const groomIdeaRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/intake/groom", tags: ["Yantra"] })
+	.input(z.object({ idea: z.string().min(4).max(2000) }))
+	.output(
+		z.object({
+			title: z.string(),
+			tier: z.string(),
+			body: z.string(),
+			groomedBy: z.string(),
+		}),
+	)
+	.handler(async ({ input }) => groomIdea(input.idea));
+
+const approveSpecRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/intake/approve", tags: ["Yantra"] })
+	.input(
+		z.object({
+			projectId: z.string().min(1),
+			title: z.string().min(4).max(120),
+			body: z.string().min(1),
+			tier: z.enum(["T0", "T1", "T2", "T3"]),
+		}),
+	)
+	.output(z.object({ issue: z.number(), url: z.string() }))
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+		return createReadySpec({
+			repo: project.repo,
+			ghToken,
+			title: input.title,
+			body: input.body,
+			tier: input.tier,
+		});
+	});
+
 export const yantraRouter = {
 	summary,
+	groomIdea: groomIdeaRoute,
+	approveSpec: approveSpecRoute,
 	runs: listRuns,
 	importTelemetry,
 	listProjects: listProjectsRoute,
