@@ -10,6 +10,10 @@ import {
 	setKillSwitch,
 } from "@backend/modules/yantra/services/kill_switch.yantra.service";
 import {
+	listLanes,
+	runLaneSmoke,
+} from "@backend/modules/yantra/services/lanes.yantra.service";
+import {
 	addProject,
 	listProjects,
 	rotateProjectToken,
@@ -280,6 +284,39 @@ const dockerStatusRoute = rpcSuperAdminProcedure
 	)
 	.handler(async () => getDockerStatus());
 
+// ── free-AI lanes (Phase 3): registry + key smoke-test ──────────────────────
+
+const listLanesRoute = rpcSuperAdminProcedure
+	.route({ method: "GET", path: "/yantra/lanes", tags: ["Yantra"] })
+	.output(
+		z.object({
+			lanes: z.array(
+				z.object({
+					id: z.string(),
+					label: z.string(),
+					keyPresent: z.boolean(),
+				}),
+			),
+		}),
+	)
+	.handler(async () => ({ lanes: await listLanes() }));
+
+const laneSmokeRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/lanes/smoke", tags: ["Yantra"] })
+	.input(z.object({ lane: z.string().min(1) }))
+	.output(
+		z.object({
+			lane: z.string(),
+			keyPresent: z.boolean(),
+			ok: z.boolean(),
+			modelCount: z.number(),
+			sampleModel: z.string().nullable(),
+			latencyMs: z.number(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async ({ input }) => runLaneSmoke(input.lane));
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
@@ -294,4 +331,6 @@ export const yantraRouter = {
 	listAppSecrets: listAppSecretsRoute,
 	setAppSecret: setAppSecretRoute,
 	dockerStatus: dockerStatusRoute,
+	listLanes: listLanesRoute,
+	laneSmoke: laneSmokeRoute,
 };
