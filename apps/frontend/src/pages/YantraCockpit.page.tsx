@@ -490,10 +490,92 @@ function ProjectsCard({
 	);
 }
 
+/** Free-AI lane keys (Phase 3) — stored encrypted; used by the OpenCode runner. */
+const LANE_KEYS: { key: string; label: string; help: string }[] = [
+	{
+		key: "NVIDIA_API_KEY",
+		label: "NVIDIA",
+		help: "nvapi-… — free tier at build.nvidia.com (integrate.api.nvidia.com/v1)",
+	},
+	{
+		key: "GEMINI_API_KEY",
+		label: "Gemini",
+		help: "AI Studio key — free tier at aistudio.google.com",
+	},
+	{
+		key: "GROQ_API_KEY",
+		label: "Groq",
+		help: "gsk_… — free tier at console.groq.com",
+	},
+];
+
+/** One labelled, write-only secret field with set/not-set status. */
+function SecretField({
+	label,
+	keyName,
+	hint,
+	help,
+	value,
+	disabled,
+	onChange,
+	onSave,
+}: {
+	label: string;
+	keyName: string;
+	hint: string | undefined;
+	help: React.ReactNode;
+	value: string;
+	disabled: boolean;
+	onChange: (v: string) => void;
+	onSave: () => void;
+}) {
+	return (
+		<Box>
+			<Stack
+				direction="row"
+				spacing={1}
+				alignItems="center"
+				sx={{ mb: 0.5, flexWrap: "wrap" }}
+			>
+				<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 90 }}>
+					{label}
+				</Typography>
+				{hint ? (
+					<Typography variant="body2" sx={{ color: "success.main" }}>
+						set (…{hint}) — paste to rotate
+					</Typography>
+				) : (
+					<Typography variant="body2" color="text.secondary">
+						not set — {help}
+					</Typography>
+				)}
+			</Stack>
+			<Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+				<TextField
+					label={keyName}
+					size="small"
+					type="password"
+					value={value}
+					onChange={(e) => onChange(e.target.value)}
+					sx={{ flex: 1 }}
+				/>
+				<Button
+					variant="contained"
+					onClick={onSave}
+					disabled={disabled || value.trim().length < 8}
+				>
+					{hint ? "Rotate" : "Save"}
+				</Button>
+			</Stack>
+		</Box>
+	);
+}
+
 /**
- * H5 pre-flight: shows whether the app can reach the host's Docker daemon
- * (the Dokploy socket mount) and holds the Claude token the execute
- * containers will run on — pasted once, stored encrypted, shown as last-4.
+ * H5 pre-flight + Phase-3 lane keys: whether the app can reach the host's
+ * Docker daemon, the Claude token the workers sign in with, and the optional
+ * free-AI provider keys (NVIDIA/Gemini/Groq) the cheaper-lane runner uses.
+ * Every secret is pasted once, stored encrypted, and shown only as last-4.
  */
 function RunnerInfraCard() {
 	const [docker, setDocker] = useState<{
@@ -505,7 +587,7 @@ function RunnerInfraCard() {
 	const [secrets, setSecrets] = useState<
 		{ key: string; valueHint: string }[] | null
 	>(null);
-	const [claudeToken, setClaudeToken] = useState("");
+	const [inputs, setInputs] = useState<Record<string, string>>({});
 	const [busy, setBusy] = useState(false);
 	const [msg, setMsg] = useState<string | null>(null);
 
@@ -528,7 +610,9 @@ function RunnerInfraCard() {
 		void load();
 	}, [load]);
 
-	const saveClaudeToken = async () => {
+	const saveSecret = async (key: string) => {
+		const value = (inputs[key] ?? "").trim();
+		if (value.length < 8) return;
 		setBusy(true);
 		setMsg(null);
 		try {
@@ -536,25 +620,23 @@ function RunnerInfraCard() {
 				method: "POST",
 				credentials: "include",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					key: "CLAUDE_CODE_OAUTH_TOKEN",
-					value: claudeToken,
-				}),
+				body: JSON.stringify({ key, value }),
 			});
 			if (!res.ok) throw new Error(String(res.status));
-			setClaudeToken("");
-			setMsg("Saved. The execute runner will use this token.");
+			setInputs((p) => ({ ...p, [key]: "" }));
+			setMsg(`${key} saved (encrypted).`);
 			await load();
 		} catch (err) {
 			setMsg(
-				`Couldn't save (${err instanceof Error ? err.message : "error"}).`,
+				`Couldn't save ${key} (${err instanceof Error ? err.message : "error"}).`,
 			);
 		} finally {
 			setBusy(false);
 		}
 	};
 
-	const claudeSecret = secrets?.find((s) => s.key === "CLAUDE_CODE_OAUTH_TOKEN");
+	const hintFor = (key: string) =>
+		secrets?.find((s) => s.key === key)?.valueHint;
 
 	return (
 		<Card sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
@@ -562,13 +644,14 @@ function RunnerInfraCard() {
 				Runner infrastructure
 			</Typography>
 			<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-				What the app needs before it can run work itself (instead of the VPS
-				loop): access to Docker, and the Claude token its workers sign in with.
+				What the app needs to run work itself: access to Docker, the Claude
+				token its workers sign in with, and (optional) free-AI keys the
+				cheaper-lane runner uses for simple tasks.
 			</Typography>
 
-			<Stack spacing={1.5}>
+			<Stack spacing={2}>
 				<Stack direction="row" spacing={1} alignItems="center">
-					<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 130 }}>
+					<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 90 }}>
 						Docker
 					</Typography>
 					{docker === null ? (
@@ -585,48 +668,59 @@ function RunnerInfraCard() {
 					) : (
 						<Typography variant="body2" sx={{ color: "error.main" }}>
 							not reachable
-							{docker.error ? ` (${docker.error})` : ""} — if the
-							/var/run/docker.sock mount is in place, this is usually the
-							socket's group permissions; the latest backend image fixes that
-							at boot, so redeploy after this change ships
+							{docker.error ? ` (${docker.error})` : ""} — check the
+							/var/run/docker.sock mount and redeploy
 						</Typography>
 					)}
 				</Stack>
 
-				<Stack direction="row" spacing={1} alignItems="center">
-					<Typography variant="body2" sx={{ fontWeight: 600, minWidth: 130 }}>
-						Claude token
+				<SecretField
+					label="Claude"
+					keyName="CLAUDE_CODE_OAUTH_TOKEN"
+					hint={hintFor("CLAUDE_CODE_OAUTH_TOKEN")}
+					help={
+						<>
+							run{" "}
+							<code>
+								sudo grep CLAUDE_CODE_OAUTH_TOKEN /opt/yantra/env/yantra.env
+							</code>{" "}
+							on the VPS and paste it
+						</>
+					}
+					value={inputs.CLAUDE_CODE_OAUTH_TOKEN ?? ""}
+					disabled={busy}
+					onChange={(v) =>
+						setInputs((p) => ({ ...p, CLAUDE_CODE_OAUTH_TOKEN: v }))
+					}
+					onSave={() => saveSecret("CLAUDE_CODE_OAUTH_TOKEN")}
+				/>
+
+				<Box>
+					<Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+						Free-AI lanes (Phase 3, optional)
 					</Typography>
-					{claudeSecret ? (
-						<Typography variant="body2" sx={{ color: "success.main" }}>
-							set (…{claudeSecret.valueHint}) — paste again below to rotate
-						</Typography>
-					) : (
-						<Typography variant="body2" color="text.secondary">
-							not set — on the VPS run{" "}
-							<code>sudo grep CLAUDE_CODE_OAUTH_TOKEN /opt/yantra/env/yantra.env</code>{" "}
-							and paste the value here
-						</Typography>
-					)}
+					<Typography variant="caption" color="text.secondary">
+						Cheaper models for simple tasks. Stored encrypted now; they start
+						doing work once the free-lane runner ships. Planning and grading
+						always stay on Claude.
+					</Typography>
+				</Box>
+				<Stack spacing={2}>
+					{LANE_KEYS.map((lane) => (
+						<SecretField
+							key={lane.key}
+							label={lane.label}
+							keyName={lane.key}
+							hint={hintFor(lane.key)}
+							help={lane.help}
+							value={inputs[lane.key] ?? ""}
+							disabled={busy}
+							onChange={(v) => setInputs((p) => ({ ...p, [lane.key]: v }))}
+							onSave={() => saveSecret(lane.key)}
+						/>
+					))}
 				</Stack>
 
-				<Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-					<TextField
-						label="CLAUDE_CODE_OAUTH_TOKEN"
-						size="small"
-						type="password"
-						value={claudeToken}
-						onChange={(e) => setClaudeToken(e.target.value)}
-						sx={{ flex: 1 }}
-					/>
-					<Button
-						variant="contained"
-						onClick={saveClaudeToken}
-						disabled={busy || claudeToken.trim().length < 8}
-					>
-						{claudeSecret ? "Rotate token" : "Save token"}
-					</Button>
-				</Stack>
 				{msg && (
 					<Typography variant="body2" color="text.secondary">
 						{msg}
