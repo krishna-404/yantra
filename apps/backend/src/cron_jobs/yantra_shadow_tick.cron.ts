@@ -9,11 +9,14 @@ const SHADOW_TICK_LOCK_KEY = 823_401_101_003n;
 let scheduledTask: ScheduledTask | null = null;
 
 /**
- * H4 shadow mode: every 10 minutes (same cadence as the VPS loop's systemd
- * timer) the app decides what the harness WOULD do and records it — the H9
- * parity record. Advisory lock = multi-replica safe. Credentials are
- * project-scoped (D23): the tick reads enabled yantra_projects rows and
- * quietly no-ops when there are none, so it always starts.
+ * H4 shadow / live tick: every 2 minutes the app decides (shadow) or acts
+ * (live) on each enabled project. The advisory lock makes it multi-replica
+ * safe AND self-throttling — if a tick outruns the previous one (a live turn
+ * or grade scan still finishing), the lock isn't acquired and this run
+ * no-ops, so a fast cadence never stacks work. Credentials are project-scoped
+ * (D23): reads enabled yantra_projects rows, quietly no-ops when there are
+ * none. (Was 10 min to mirror the VPS systemd timer; tightened once the app
+ * became the sole driver, so it picks up and chains work far faster.)
  */
 export async function yantraShadowTickOnce(): Promise<void> {
 	try {
@@ -30,10 +33,10 @@ export async function yantraShadowTickOnce(): Promise<void> {
 }
 
 export function startYantraShadowTickCron(): void {
-	scheduledTask = cron.schedule("*/10 * * * *", () => {
+	scheduledTask = cron.schedule("*/2 * * * *", () => {
 		void yantraShadowTickOnce();
 	});
-	logger.info("yantra shadow tick scheduled (every 10 min)");
+	logger.info("yantra shadow tick scheduled (every 2 min)");
 }
 
 export function stopYantraShadowTickCron(): void {
