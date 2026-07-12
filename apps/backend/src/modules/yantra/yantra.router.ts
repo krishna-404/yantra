@@ -6,6 +6,7 @@ import {
 	setAppSecret,
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
 import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
+import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { runFreeLaneExecute } from "@backend/modules/yantra/services/free_lane_runner.yantra.service";
 import {
 	getKillSwitch,
@@ -398,6 +399,112 @@ const tryFreeLaneRoute = rpcSuperAdminProcedure
 		return { started: true, model: modelRef, error: null };
 	});
 
+// Manual "run the 3-model ensemble on this issue" trigger (operator directive
+// 2026-07-12). Picks N execute models + 1 judge from the catalog (validating
+// overrides), claims the issue, fires the ensemble container detached. Every
+// task should eventually route here automatically; this proves it first.
+const tryEnsembleRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/lanes/ensemble", tags: ["Yantra"] })
+	.input(
+		z.object({
+			projectId: z.string().min(1),
+			issue: z.number().int().positive(),
+			/** Override the execute models (≥2). Defaults to the top NVIDIA executors. */
+			models: z.array(z.string().min(1)).min(2).optional(),
+			/** Override the synthesis judge. Defaults to the top NVIDIA grader. */
+			judge: z.string().min(1).optional(),
+			tier: z.string().default("T0"),
+		}),
+	)
+	.output(
+		z.object({
+			started: z.boolean(),
+			models: z.array(z.string()),
+			judge: z.string(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("id", "repo", "baseBranch", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+
+		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
+		if (!nvidiaKey) {
+			return {
+				started: false,
+				models: [],
+				judge: "",
+				error: "NVIDIA_API_KEY not set",
+			};
+		}
+
+		const executors = candidateModels("execute", ["nvidia"]);
+		const graders = candidateModels("grade", ["nvidia"]);
+		// Default: up to 3 distinct executors; judge = top grader (never an executor,
+		// so no self-grading — D26).
+		const models = input.models ?? executors.slice(0, 3).map((m) => m.ref);
+		const judge = input.judge ?? graders[0]?.ref;
+
+		if (models.length < 2)
+			return {
+				started: false,
+				models,
+				judge: judge ?? "",
+				error: "need at least 2 execute models",
+			};
+		const badModel = models.find((m) => !executors.some((e) => e.ref === m));
+		if (badModel)
+			return {
+				started: false,
+				models,
+				judge: judge ?? "",
+				error: `not a known NVIDIA executor: ${badModel}`,
+			};
+		if (!judge || !graders.some((g) => g.ref === judge))
+			return {
+				started: false,
+				models,
+				judge: judge ?? "",
+				error: "judge is not a known NVIDIA grader",
+			};
+		if (models.includes(judge))
+			return {
+				started: false,
+				models,
+				judge,
+				error: "judge must not also be an execute model (no self-grading)",
+			};
+
+		const turn = ulid();
+		await addIssueLabels(project.repo, input.issue, ["agent:working"], ghToken);
+		await removeIssueLabel(project.repo, input.issue, "spec:ready", ghToken);
+		await commentOnIssue(
+			project.repo,
+			input.issue,
+			`🤖 yantra claim run=${turn} role=execute lane=ensemble models=[${models.join(", ")}] judge=${judge}`,
+			ghToken,
+		);
+
+		void runEnsembleExecute({
+			repo: project.repo,
+			baseBranch: project.baseBranch,
+			ghToken,
+			nvidiaKey,
+			models,
+			judge,
+			issue: input.issue,
+			turn,
+			tier: input.tier,
+			adviseJson: {},
+		}).catch((err) =>
+			logger.error({ err, issue: input.issue }, "ensemble try failed"),
+		);
+
+		return { started: true, models, judge, error: null };
+	});
+
 export const yantraRouter = {
 	summary,
 	runs: listRuns,
@@ -415,4 +522,5 @@ export const yantraRouter = {
 	listLanes: listLanesRoute,
 	laneSmoke: laneSmokeRoute,
 	tryFreeLane: tryFreeLaneRoute,
+	tryEnsemble: tryEnsembleRoute,
 };

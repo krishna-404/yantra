@@ -128,6 +128,8 @@ export const recordRun = async (row: {
 	issue: number;
 	role: string;
 	model: string;
+	/** Provider lane for scoring (e.g. "claude-max", "nvidia", "ensemble"). */
+	lane?: string;
 	promptVersion: number;
 	tier: string;
 	taskType: string;
@@ -143,7 +145,7 @@ export const recordRun = async (row: {
 		baseBranch: row.baseBranch,
 		issue: row.issue,
 		role: row.role,
-		lane: "claude-max",
+		lane: row.lane ?? "claude-max",
 		model: row.model,
 		promptVersion: row.promptVersion,
 		tier: row.tier,
