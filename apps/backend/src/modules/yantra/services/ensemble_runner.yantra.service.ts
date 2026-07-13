@@ -77,7 +77,7 @@ git clone -b "$BASE_BRANCH" "https://x-access-token:\${GH_TOKEN}@github.com/\${Y
 cd repo
 git checkout -q -B "$CAND_BRANCH" "origin/$BASE_BRANCH"
 echo "=== yarn install ==="
-yarn install --frozen-lockfile
+yarn install --frozen-lockfile --network-timeout 600000
 yarn build --filter='./packages/*' || echo "WARN: package pre-build non-zero"
 echo "=== opencode run ($MODEL), ${AGENT_TIMEOUT_S}s cap ==="
 timeout ${AGENT_TIMEOUT_S} opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || echo "WARN: opencode exited non-zero or hit the ${AGENT_TIMEOUT_S}s timeout"
@@ -109,7 +109,7 @@ cd repo
 BASE="origin/$BASE_BRANCH"
 git checkout -q -B "$BRANCH" "$BASE"
 
-yarn install --frozen-lockfile >/workspace/selfcheck.log 2>&1
+yarn install --frozen-lockfile --network-timeout 600000 >/workspace/selfcheck.log 2>&1
 yarn build --filter='./packages/*' >>/workspace/selfcheck.log 2>&1 || \\
 	echo "WARN: package pre-build returned non-zero; check-types may false-red" >>/workspace/selfcheck.log
 

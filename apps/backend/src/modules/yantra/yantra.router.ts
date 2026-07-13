@@ -7,6 +7,7 @@ import {
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
 import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
 import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
+import { buildExecImage } from "@backend/modules/yantra/services/exec_image_builder.yantra.service";
 import { runFreeLaneExecute } from "@backend/modules/yantra/services/free_lane_runner.yantra.service";
 import {
 	getKillSwitch,
@@ -301,6 +302,29 @@ const dockerStatusRoute = rpcSuperAdminProcedure
 	)
 	.handler(async () => getDockerStatus());
 
+// Self-maintaining: rebuild the OpenCode runner image through the Docker socket
+// the backend already holds — no SSH. Build files come from the repo (project
+// token) so the image always matches the deployed branch.
+const rebuildExecImageRoute = rpcSuperAdminProcedure
+	.route({
+		method: "POST",
+		path: "/yantra/rebuild-exec-image",
+		tags: ["Yantra"],
+	})
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(z.object({ ok: z.boolean(), tag: z.string(), log: z.string() }))
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "baseBranch", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+		return buildExecImage({
+			repo: project.repo,
+			baseBranch: project.baseBranch,
+			ghToken,
+		});
+	});
+
 // ── free-AI lanes (Phase 3): registry + key smoke-test ──────────────────────
 
 const listLanesRoute = rpcSuperAdminProcedure
@@ -569,6 +593,7 @@ export const yantraRouter = {
 	listAppSecrets: listAppSecretsRoute,
 	setAppSecret: setAppSecretRoute,
 	dockerStatus: dockerStatusRoute,
+	rebuildExecImage: rebuildExecImageRoute,
 	listLanes: listLanesRoute,
 	laneSmoke: laneSmokeRoute,
 	tryFreeLane: tryFreeLaneRoute,
