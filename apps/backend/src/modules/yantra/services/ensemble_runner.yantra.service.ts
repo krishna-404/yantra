@@ -38,8 +38,13 @@ import { ulid } from "ulid";
  */
 
 const NO_DIFF_EXIT = 21;
-const CAND_TIMEOUT_MS = 90 * 60 * 1000; // one model, one container
-const JUDGE_TIMEOUT_MS = 90 * 60 * 1000; // synthesis + self-check + PR
+// Fail-fast: a free model that hasn't produced a diff in ~18 min is unusable
+// for T0/T1 work. The in-container `timeout` around each opencode call kills a
+// hung model; these container ceilings are the outer backstop (install + agent
+// + the judge's full self-check suite).
+const AGENT_TIMEOUT_S = 18 * 60; // per opencode invocation, inside the container
+const CAND_TIMEOUT_MS = 25 * 60 * 1000; // clone + install + one agent
+const JUDGE_TIMEOUT_MS = 35 * 60 * 1000; // + self-check + one fix pass + PR
 
 export interface EnsembleOutcome {
 	kind: "pr_open" | "parked" | "no_diff";
@@ -74,8 +79,8 @@ git checkout -q -B "$CAND_BRANCH" "origin/$BASE_BRANCH"
 echo "=== yarn install ==="
 yarn install --frozen-lockfile
 yarn build --filter='./packages/*' || echo "WARN: package pre-build non-zero"
-echo "=== opencode run ($MODEL) ==="
-opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || echo "WARN: opencode exited non-zero"
+echo "=== opencode run ($MODEL), ${AGENT_TIMEOUT_S}s cap ==="
+timeout ${AGENT_TIMEOUT_S} opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || echo "WARN: opencode exited non-zero or hit the ${AGENT_TIMEOUT_S}s timeout"
 git add -A || true
 git commit -q -m "candidate: $MODEL" || true
 git diff --quiet "origin/$BASE_BRANCH"..HEAD 2>/dev/null && { echo "NO_DIFF"; exit ${NO_DIFF_EXIT}; }
@@ -134,7 +139,7 @@ done 3< /workspace/cands.txt
 		cat "/workspace/cand-$n.patch" 2>/dev/null || echo "(empty)"; echo '\`\`\`'
 	done
 } > /workspace/judge.md
-opencode run "$(cat /workspace/judge.md)" -m "$JUDGE_MODEL" --dangerously-skip-permissions </dev/null >/workspace/judge-out.log 2>&1
+timeout ${AGENT_TIMEOUT_S} opencode run "$(cat /workspace/judge.md)" -m "$JUDGE_MODEL" --dangerously-skip-permissions </dev/null >/workspace/judge-out.log 2>&1 || echo "WARN: judge opencode non-zero/timeout" >>/workspace/judge-out.log
 git add -A >/dev/null 2>&1 || true
 git commit -q -m "synthesised solution (judge: $JUDGE_MODEL)" >/dev/null 2>&1 || true
 
@@ -143,10 +148,10 @@ selfcheck() {
 }
 if ! selfcheck >>/workspace/selfcheck.log 2>&1; then
 	echo "--- self-check failed; giving the judge one fix pass ---" >>/workspace/selfcheck.log
-	opencode run "The self-check gate failed. Output tail:
+	timeout ${AGENT_TIMEOUT_S} opencode run "The self-check gate failed. Output tail:
 $(tail -60 /workspace/selfcheck.log)
 Fix the failures. You may not weaken or skip tests. Commit the fix." \\
-		-m "$JUDGE_MODEL" --dangerously-skip-permissions </dev/null >>/workspace/judge-out.log 2>&1
+		-m "$JUDGE_MODEL" --dangerously-skip-permissions </dev/null >>/workspace/judge-out.log 2>&1 || echo "WARN: judge fix-pass non-zero/timeout" >>/workspace/judge-out.log
 	git add -A >/dev/null 2>&1 || true
 	git commit -q -m "judge fix pass" >/dev/null 2>&1 || true
 	selfcheck >>/workspace/selfcheck.log 2>&1
