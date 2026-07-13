@@ -54,10 +54,10 @@ export interface EnsembleOutcome {
 // write-time; env vars resolve at run-time under the `node` user (su -p keeps
 // the environment). `\${VAR}` escapes JS interpolation so bash sees $VAR.
 
-/** One candidate: solve the spec, push its own branch, no PR. */
+// Candidates don't touch the DB (they only clone → agent → push), so no
+// Postgres here. Output is NOT redirected to a file — it flows to the container
+// transcript so a failure (clone, install, agent) is visible in the park diag.
 const buildCandidateScript = (): string => `set -euo pipefail
-pg_ctlcluster "$(ls /etc/postgresql | head -1)" main start
-su postgres -c "psql -qc \\"ALTER USER postgres PASSWORD 'postgres';\\""
 mkdir -p /workspace
 echo "$PROMPT_B64" | base64 -d > /workspace/prompt.md
 cat > /workspace/work.sh <<'WORK'
@@ -67,14 +67,17 @@ export GIT_TERMINAL_PROMPT=0
 git config --global user.name "yantra-bot"
 git config --global user.email "yantra-bot@users.noreply.github.com"
 cd /workspace
-git clone --quiet -b "$BASE_BRANCH" "https://x-access-token:\${GH_TOKEN}@github.com/\${YANTRA_REPO}.git" repo
+echo "=== clone \${YANTRA_REPO}#\${BASE_BRANCH} ==="
+git clone -b "$BASE_BRANCH" "https://x-access-token:\${GH_TOKEN}@github.com/\${YANTRA_REPO}.git" repo
 cd repo
 git checkout -q -B "$CAND_BRANCH" "origin/$BASE_BRANCH"
-yarn install --frozen-lockfile >/workspace/install.log 2>&1
-yarn build --filter='./packages/*' >>/workspace/install.log 2>&1 || true
-opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || true
-git add -A >/dev/null 2>&1 || true
-git commit -q -m "candidate: $MODEL" >/dev/null 2>&1 || true
+echo "=== yarn install ==="
+yarn install --frozen-lockfile
+yarn build --filter='./packages/*' || echo "WARN: package pre-build non-zero"
+echo "=== opencode run ($MODEL) ==="
+opencode run "$(cat /workspace/prompt.md)" -m "$MODEL" --dangerously-skip-permissions </dev/null || echo "WARN: opencode exited non-zero"
+git add -A || true
+git commit -q -m "candidate: $MODEL" || true
 git diff --quiet "origin/$BASE_BRANCH"..HEAD 2>/dev/null && { echo "NO_DIFF"; exit ${NO_DIFF_EXIT}; }
 git push --quiet -u origin "$CAND_BRANCH" --force
 WORK
