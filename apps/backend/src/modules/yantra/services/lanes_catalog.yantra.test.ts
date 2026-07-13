@@ -10,7 +10,9 @@ describe("LANE_MODELS catalog", () => {
 	it("every entry is well-formed: provider/model ref, source, ≥1 role", () => {
 		for (const m of LANE_MODELS) {
 			expect(m.ref).toMatch(/^[a-z]+\/.+/); // provider/model
-			expect(["nvidia", "opencode"]).toContain(m.source);
+			expect(["groq", "nvidia", "opencode"]).toContain(m.source);
+			// the ref's provider prefix matches the declared source
+			expect(m.ref.startsWith(`${m.source}/`)).toBe(true);
 			expect(m.roles.length).toBeGreaterThan(0);
 			expect(["fast", "medium", "slow"]).toContain(m.speed);
 		}

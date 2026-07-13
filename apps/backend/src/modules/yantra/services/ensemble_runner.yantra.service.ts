@@ -220,7 +220,9 @@ export const runEnsembleExecute = async (input: {
 	repo: string;
 	baseBranch: string;
 	ghToken: string;
-	nvidiaKey: string;
+	/** Provider API keys to expose in the container (NVIDIA_API_KEY, GROQ_API_KEY,
+	 * …) — opencode.json reads them via {env:…}. Only set keys are passed. */
+	providerKeys: Record<string, string>;
 	/** ≥2 execute model refs; each solves in its own parallel container. */
 	models: string[];
 	/** Grade-role model that synthesises the final solution (never an executor). */
@@ -265,7 +267,7 @@ export const runEnsembleExecute = async (input: {
 		BASE_BRANCH: input.baseBranch,
 		YANTRA_REPO: input.repo,
 		GH_TOKEN: input.ghToken,
-		NVIDIA_API_KEY: input.nvidiaKey,
+		...input.providerKeys,
 	};
 
 	// ── Phase 1: candidates in parallel, each in its own container ──────────
