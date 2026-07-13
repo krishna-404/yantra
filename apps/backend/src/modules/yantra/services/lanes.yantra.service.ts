@@ -167,7 +167,7 @@ export const listLanes = async (): Promise<LaneView[]> => {
 // model may grade, audited periodically by Claude (D26).
 
 export type LaneRole = "execute" | "grade";
-export type LaneSource = "nvidia" | "opencode";
+export type LaneSource = "groq" | "nvidia" | "opencode";
 
 export interface LaneModel {
 	/** OpenCode model ref `provider/model`, e.g. "nvidia/qwen/qwen3-coder-480b-a35b-instruct". */
@@ -181,6 +181,38 @@ export interface LaneModel {
 }
 
 export const LANE_MODELS: LaneModel[] = [
+	// Groq executors first — 280–1000 t/s (vs NVIDIA's MoE models hanging inside
+	// opencode). gpt-oss are OpenAI open-weight models strong at code; listed
+	// fastest-first so the default top-3 pick is all Groq when its key is set.
+	{
+		ref: "groq/openai/gpt-oss-120b",
+		label: "GPT-OSS 120B (Groq)",
+		source: "groq",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "groq/openai/gpt-oss-20b",
+		label: "GPT-OSS 20B (Groq)",
+		source: "groq",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "groq/llama-3.3-70b-versatile",
+		label: "Llama 3.3 70B (Groq)",
+		source: "groq",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	// Groq grader — distinct from the executors above (no self-grading, D26).
+	{
+		ref: "groq/qwen/qwen3-32b",
+		label: "Qwen3 32B (Groq)",
+		source: "groq",
+		roles: ["grade"],
+		speed: "medium",
+	},
 	// executors — fast enough to drive many tool calls
 	{
 		ref: "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
@@ -257,3 +289,28 @@ export const candidateModels = (
 	LANE_MODELS.filter(
 		(m) => m.roles.includes(role) && availableSources.includes(m.source),
 	);
+
+/**
+ * Which free providers are configured right now: the keys to inject into the
+ * run container (opencode.json reads them via {env:…}) and the sources to draw
+ * candidates from. Groq first — it's the fastest and the catalog lists it first,
+ * so the default top-3 executor pick is all Groq when its key is set.
+ */
+export const resolveFreeProviders = async (): Promise<{
+	providerKeys: Record<string, string>;
+	sources: LaneSource[];
+}> => {
+	const providerKeys: Record<string, string> = {};
+	const sources: LaneSource[] = [];
+	const groq = await getAppSecretValue("GROQ_API_KEY");
+	if (groq) {
+		providerKeys.GROQ_API_KEY = groq;
+		sources.push("groq");
+	}
+	const nvidia = await getAppSecretValue("NVIDIA_API_KEY");
+	if (nvidia) {
+		providerKeys.NVIDIA_API_KEY = nvidia;
+		sources.push("nvidia");
+	}
+	return { providerKeys, sources };
+};

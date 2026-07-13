@@ -4,7 +4,10 @@ import { getAppSecretValue } from "@backend/modules/yantra/services/app_secrets.
 import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { runExecute } from "@backend/modules/yantra/services/execute_runner.yantra.service";
 import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
-import { candidateModels } from "@backend/modules/yantra/services/lanes.yantra.service";
+import {
+	candidateModels,
+	resolveFreeProviders,
+} from "@backend/modules/yantra/services/lanes.yantra.service";
 import { openSecret } from "@backend/modules/yantra/services/secret_box.yantra.service";
 import {
 	addIssueLabels,
@@ -120,20 +123,18 @@ export const runLiveTurn = async (input: {
 	// container when NVIDIA isn't set up (or too few models exist). The self-
 	// check gate + grade + rails are identical either way, so the lane choice
 	// never affects what can merge.
-	const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
-	const models = nvidiaKey
-		? candidateModels("execute", ["nvidia"])
-				.slice(0, 3)
-				.map((m) => m.ref)
-		: [];
-	const judge = nvidiaKey ? candidateModels("grade", ["nvidia"])[0]?.ref : null;
+	const { providerKeys, sources } = await resolveFreeProviders();
+	const models = candidateModels("execute", sources)
+		.slice(0, 3)
+		.map((m) => m.ref);
+	const judge = candidateModels("grade", sources)[0]?.ref;
 
-	if (nvidiaKey && models.length >= 2 && judge) {
+	if (models.length >= 2 && judge) {
 		await runEnsembleExecute({
 			repo,
 			baseBranch,
 			ghToken,
-			nvidiaKey,
+			providerKeys,
 			models,
 			judge,
 			issue: input.issue,

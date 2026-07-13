@@ -15,6 +15,7 @@ import {
 import {
 	candidateModels,
 	listLanes,
+	resolveFreeProviders,
 	runLaneSmoke,
 } from "@backend/modules/yantra/services/lanes.yantra.service";
 import {
@@ -434,20 +435,20 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 			.select("id", "repo", "baseBranch", "ghTokenCiphertext");
 		const ghToken = openSecret(project.ghTokenCiphertext);
 
-		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
-		if (!nvidiaKey) {
+		const { providerKeys, sources } = await resolveFreeProviders();
+		if (sources.length === 0) {
 			return {
 				started: false,
 				models: [],
 				judge: "",
-				error: "NVIDIA_API_KEY not set",
+				error: "no free-provider key set (GROQ_API_KEY / NVIDIA_API_KEY)",
 			};
 		}
 
-		const executors = candidateModels("execute", ["nvidia"]);
-		const graders = candidateModels("grade", ["nvidia"]);
-		// Default: up to 3 distinct executors; judge = top grader (never an executor,
-		// so no self-grading — D26).
+		const executors = candidateModels("execute", sources);
+		const graders = candidateModels("grade", sources);
+		// Default: up to 3 distinct executors (Groq first); judge = top grader
+		// (never an executor, so no self-grading — D26).
 		const models = input.models ?? executors.slice(0, 3).map((m) => m.ref);
 		const judge = input.judge ?? graders[0]?.ref;
 
@@ -464,14 +465,14 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 				started: false,
 				models,
 				judge: judge ?? "",
-				error: `not a known NVIDIA executor: ${badModel}`,
+				error: `not a known executor for the configured providers: ${badModel}`,
 			};
 		if (!judge || !graders.some((g) => g.ref === judge))
 			return {
 				started: false,
 				models,
 				judge: judge ?? "",
-				error: "judge is not a known NVIDIA grader",
+				error: "judge is not a known grader for the configured providers",
 			};
 		if (models.includes(judge))
 			return {
@@ -495,7 +496,7 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 			repo: project.repo,
 			baseBranch: project.baseBranch,
 			ghToken,
-			nvidiaKey,
+			providerKeys,
 			models,
 			judge,
 			issue: input.issue,
