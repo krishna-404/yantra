@@ -180,12 +180,32 @@ su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
 // Exported for the contract test — pins the two-phase script shape.
 export const ensembleScripts = { buildCandidateScript, buildJudgeScript };
 
+/**
+ * Pure: render each candidate's exit code + transcript tail for the park
+ * comment, so a "every candidate failed" park is diagnosable from the issue
+ * itself (not just the backend logs).
+ */
+export const formatCandidateDiag = (
+	cands: { model: string; exitCode: number; tail: string }[],
+): string =>
+	cands
+		.map(
+			(c) =>
+				`\n\n**${c.model}** (exit ${c.exitCode}):\n\`\`\`\n${
+					c.tail.slice(-600) || "(no output)"
+				}\n\`\`\``,
+		)
+		.join("");
+
 // ── orchestration ───────────────────────────────────────────────────────────
 
 interface CandResult {
 	model: string;
 	branch: string;
 	ok: boolean;
+	exitCode: number;
+	/** Last chunk of the container transcript — the "why" when a candidate fails. */
+	tail: string;
 }
 
 export const runEnsembleExecute = async (input: {
@@ -253,13 +273,30 @@ export const runEnsembleExecute = async (input: {
 					env: { ...baseEnv, MODEL: model, CAND_BRANCH: candBranch },
 					timeoutMs: CAND_TIMEOUT_MS,
 				});
-				return { model, branch: candBranch, ok: r.exitCode === 0 };
+				if (r.exitCode !== 0)
+					logger.warn(
+						{
+							issue: input.issue,
+							model,
+							exitCode: r.exitCode,
+							tail: r.output.slice(-1200),
+						},
+						"ensemble candidate failed",
+					);
+				return {
+					model,
+					branch: candBranch,
+					ok: r.exitCode === 0,
+					exitCode: r.exitCode,
+					tail: r.output.slice(-700),
+				};
 			} catch (err) {
+				const tail = err instanceof Error ? err.message : String(err);
 				logger.warn(
 					{ err, issue: input.issue, model },
 					"ensemble candidate container error",
 				);
-				return { model, branch: candBranch, ok: false };
+				return { model, branch: candBranch, ok: false, exitCode: -1, tail };
 			}
 		}),
 	);
@@ -286,7 +323,7 @@ export const runEnsembleExecute = async (input: {
 			),
 		);
 
-	const park = async (reason: string, outcome: string) => {
+	const park = async (reason: string, outcome: string, diag = "") => {
 		await recordCandidates("candidate");
 		await recordRun({
 			repo: input.repo,
@@ -318,13 +355,20 @@ export const runEnsembleExecute = async (input: {
 		await commentOnIssue(
 			input.repo,
 			input.issue,
-			`🤖 yantra ensemble parked (${reason}). Models: ${input.models.join(", ")}; judge ${input.judge}.`,
+			`🤖 yantra ensemble parked (${reason}). Models: ${input.models.join(", ")}; judge ${input.judge}.${diag}`,
 			input.ghToken,
 		);
 	};
 
 	if (succeeded.length === 0) {
-		await park("every candidate failed or produced no diff", "infra_error");
+		// Surface each candidate's exit + transcript tail so the failure is
+		// diagnosable from the issue itself, not just the backend logs.
+		const diag = formatCandidateDiag(candResults);
+		await park(
+			"every candidate failed or produced no diff",
+			"infra_error",
+			diag,
+		);
 		return {
 			kind: "parked",
 			pr: 0,
