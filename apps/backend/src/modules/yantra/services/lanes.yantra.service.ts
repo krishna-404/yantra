@@ -29,6 +29,13 @@ export interface Lane {
 
 export const LANES: Lane[] = [
 	{
+		id: "opencode",
+		label: "OpenCode Zen",
+		secretKey: "OPENCODE_API_KEY",
+		modelsUrl: "https://opencode.ai/zen/v1/models",
+		auth: "bearer",
+	},
+	{
 		id: "nvidia",
 		label: "NVIDIA",
 		secretKey: "NVIDIA_API_KEY",
@@ -181,9 +188,40 @@ export interface LaneModel {
 }
 
 export const LANE_MODELS: LaneModel[] = [
-	// Groq executors first — 280–1000 t/s (vs NVIDIA's MoE models hanging inside
-	// opencode). gpt-oss are OpenAI open-weight models strong at code; listed
-	// fastest-first so the default top-3 pick is all Groq when its key is set.
+	// OpenCode Zen free models FIRST — the CLI's own hosted models with generous
+	// free limits (no per-provider tier ceiling). Listed first so the default
+	// top-3 executor pick is all-OpenCode when its key is set. Model ids are the
+	// current /zen/v1 free set; confirm exact refs with `opencode models`.
+	{
+		ref: "opencode/big-pickle",
+		label: "Big Pickle (OpenCode Zen)",
+		source: "opencode",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "opencode/deepseek-v4-flash",
+		label: "DeepSeek V4 Flash (OpenCode Zen)",
+		source: "opencode",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "opencode/north-mini-code",
+		label: "North Mini Code (OpenCode Zen)",
+		source: "opencode",
+		roles: ["execute"],
+		speed: "fast",
+	},
+	{
+		ref: "opencode/nemotron-3-ultra",
+		label: "Nemotron 3 Ultra (OpenCode Zen)",
+		source: "opencode",
+		roles: ["grade"],
+		speed: "slow",
+	},
+	// Groq executors — 280–1000 t/s (vs NVIDIA's MoE models hanging inside
+	// opencode). gpt-oss are OpenAI open-weight models strong at code.
 	{
 		ref: "groq/openai/gpt-oss-120b",
 		label: "GPT-OSS 120B (Groq)",
@@ -257,28 +295,6 @@ export const LANE_MODELS: LaneModel[] = [
 		roles: ["grade"],
 		speed: "slow",
 	},
-	// OpenCode-native free models — enabled once the OpenCode token is stored
-	{
-		ref: "opencode/deepseek-v4-flash-free",
-		label: "DeepSeek V4 Flash (OpenCode free)",
-		source: "opencode",
-		roles: ["execute"],
-		speed: "fast",
-	},
-	{
-		ref: "opencode/north-mini-code-free",
-		label: "North Mini Code (OpenCode free)",
-		source: "opencode",
-		roles: ["execute"],
-		speed: "fast",
-	},
-	{
-		ref: "opencode/nemotron-3-ultra-free",
-		label: "Nemotron 3 Ultra (OpenCode free)",
-		source: "opencode",
-		roles: ["grade"],
-		speed: "slow",
-	},
 ];
 
 /** Candidate models for a role, limited to sources whose credential is present. */
@@ -302,6 +318,13 @@ export const resolveFreeProviders = async (): Promise<{
 }> => {
 	const providerKeys: Record<string, string> = {};
 	const sources: LaneSource[] = [];
+	// OpenCode Zen first — its own hosted free models with generous limits (the
+	// key is read by opencode automatically as OPENCODE_API_KEY).
+	const opencode = await getAppSecretValue("OPENCODE_API_KEY");
+	if (opencode) {
+		providerKeys.OPENCODE_API_KEY = opencode;
+		sources.push("opencode");
+	}
 	const groq = await getAppSecretValue("GROQ_API_KEY");
 	if (groq) {
 		providerKeys.GROQ_API_KEY = groq;

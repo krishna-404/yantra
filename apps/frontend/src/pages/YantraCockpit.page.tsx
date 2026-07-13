@@ -497,6 +497,12 @@ function ProjectsCard({
 const LANE_KEYS: { key: string; laneId: string; label: string; help: string }[] =
 	[
 		{
+			key: "OPENCODE_API_KEY",
+			laneId: "opencode",
+			label: "OpenCode Zen",
+			help: "OpenCode's own free models — get the key at https://opencode.ai/auth",
+		},
+		{
 			key: "NVIDIA_API_KEY",
 			laneId: "nvidia",
 			label: "NVIDIA",
