@@ -1,41 +1,41 @@
 import {
 	ensembleScripts,
+	formatCandidateDiag,
 	runEnsembleExecute,
 } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ── mock the I/O the runner orchestrates so we can exercise the whole flow ──
-const runYantraContainer = vi.fn();
-const gh = vi.fn();
-const recordRun = vi.fn();
-const addIssueLabels = vi.fn();
-const removeIssueLabel = vi.fn();
-const commentOnIssue = vi.fn();
+// vi.hoisted so the mock factories reference values that exist at hoist time —
+// referencing plain module-level consts inside vi.mock is fragile in vitest v4.
+const m = vi.hoisted(() => ({
+	runYantraContainer: vi.fn(),
+	gh: vi.fn(),
+	getIssue: vi.fn(),
+	recordRun: vi.fn(),
+	addIssueLabels: vi.fn(),
+	removeIssueLabel: vi.fn(),
+	commentOnIssue: vi.fn(),
+}));
 
 vi.mock(
 	"@backend/modules/yantra/services/container_runner.yantra.service",
-	() => ({ runYantraContainer: (o: unknown) => runYantraContainer(o) }),
+	() => ({ runYantraContainer: m.runYantraContainer }),
 );
 vi.mock("@backend/modules/yantra/services/gh_client.yantra.service", () => ({
-	gh: (...a: unknown[]) => gh(...a),
+	gh: m.gh,
 }));
 vi.mock("@backend/modules/yantra/services/repo_files.yantra.service", () => ({
 	fetchRepoFile: vi.fn().mockResolvedValue(null),
 	parsePromptVersion: vi.fn().mockReturnValue(1),
 }));
 vi.mock("@backend/modules/yantra/services/turn_shared.yantra.service", () => ({
-	getIssue: vi.fn().mockResolvedValue({
-		number: 7,
-		title: "Add tests",
-		body: "### type\n\ntest",
-		labels: [],
-	}),
-	issueField: vi.fn().mockReturnValue("test"),
-	branchSlug: vi.fn().mockReturnValue("add-tests"),
-	recordRun: (r: unknown) => recordRun(r),
-	addIssueLabels: (...a: unknown[]) => addIssueLabels(...a),
-	removeIssueLabel: (...a: unknown[]) => removeIssueLabel(...a),
-	commentOnIssue: (...a: unknown[]) => commentOnIssue(...a),
+	getIssue: m.getIssue,
+	issueField: () => "test",
+	branchSlug: () => "add-tests",
+	recordRun: m.recordRun,
+	addIssueLabels: m.addIssueLabels,
+	removeIssueLabel: m.removeIssueLabel,
+	commentOnIssue: m.commentOnIssue,
 }));
 
 const baseInput = {
@@ -107,26 +107,44 @@ describe("ensemble judge script", () => {
 	});
 });
 
+describe("formatCandidateDiag", () => {
+	it("renders each candidate's exit code and transcript tail", () => {
+		const out = formatCandidateDiag([
+			{ model: "nvidia/a", exitCode: 1, tail: "boom: it failed" },
+			{ model: "nvidia/b", exitCode: 21, tail: "" },
+		]);
+		expect(out).toContain("**nvidia/a** (exit 1)");
+		expect(out).toContain("boom: it failed");
+		expect(out).toContain("**nvidia/b** (exit 21)");
+		expect(out).toContain("(no output)"); // empty tail falls back
+	});
+});
+
 describe("runEnsembleExecute orchestration", () => {
 	beforeEach(() => {
-		runYantraContainer.mockReset();
-		gh.mockReset();
-		recordRun.mockReset().mockResolvedValue("run");
-		addIssueLabels.mockReset().mockResolvedValue(undefined);
-		removeIssueLabel.mockReset().mockResolvedValue(undefined);
-		commentOnIssue.mockReset().mockResolvedValue(undefined);
+		for (const fn of Object.values(m)) fn.mockReset();
+		m.getIssue.mockResolvedValue({
+			number: 7,
+			title: "Add tests",
+			body: "### type\n\ntest",
+			labels: [],
+		});
+		m.recordRun.mockResolvedValue("run");
+		m.addIssueLabels.mockResolvedValue(undefined);
+		m.removeIssueLabel.mockResolvedValue(undefined);
+		m.commentOnIssue.mockResolvedValue(undefined);
 	});
 
 	const setContainer = (candExit: number, judgeExit: number) =>
-		runYantraContainer.mockImplementation(
-			async (o: { name: string }): Promise<{ exitCode: number }> => ({
-				exitCode: o.name.startsWith("yantra-cand-") ? candExit : judgeExit,
-			}),
-		);
+		m.runYantraContainer.mockImplementation(async (o: { name: string }) => ({
+			exitCode: o.name.startsWith("yantra-cand-") ? candExit : judgeExit,
+			output: "container transcript",
+			timedOut: false,
+		}));
 
 	it("runs one container per candidate PLUS a judge, then opens the PR", async () => {
 		setContainer(0, 0);
-		gh.mockResolvedValue([{ number: 42 }]);
+		m.gh.mockResolvedValue([{ number: 42 }]);
 
 		const out = await runEnsembleExecute(baseInput);
 
@@ -134,10 +152,10 @@ describe("runEnsembleExecute orchestration", () => {
 		expect(out.pr).toBe(42);
 		expect(out.candidatesSucceeded).toBe(3);
 		// 3 candidate containers + 1 judge container
-		expect(runYantraContainer).toHaveBeenCalledTimes(4);
+		expect(m.runYantraContainer).toHaveBeenCalledTimes(4);
 		// telemetry: 3 candidates + 1 synthesis row
-		expect(recordRun).toHaveBeenCalledTimes(4);
-		expect(addIssueLabels).toHaveBeenCalledWith(
+		expect(m.recordRun).toHaveBeenCalledTimes(4);
+		expect(m.addIssueLabels).toHaveBeenCalledWith(
 			baseInput.repo,
 			7,
 			["agent:pr-open"],
@@ -153,8 +171,8 @@ describe("runEnsembleExecute orchestration", () => {
 		expect(out.kind).toBe("parked");
 		expect(out.candidatesSucceeded).toBe(0);
 		// 3 candidate containers only — the judge never runs
-		expect(runYantraContainer).toHaveBeenCalledTimes(3);
-		expect(addIssueLabels).toHaveBeenCalledWith(
+		expect(m.runYantraContainer).toHaveBeenCalledTimes(3);
+		expect(m.addIssueLabels).toHaveBeenCalledWith(
 			baseInput.repo,
 			7,
 			["needs-human"],
@@ -168,6 +186,6 @@ describe("runEnsembleExecute orchestration", () => {
 		const out = await runEnsembleExecute(baseInput);
 
 		expect(out.kind).toBe("no_diff");
-		expect(runYantraContainer).toHaveBeenCalledTimes(4);
+		expect(m.runYantraContainer).toHaveBeenCalledTimes(4);
 	});
 });
