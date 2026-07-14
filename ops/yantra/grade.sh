@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Yantra GRADE (loop-protocol §2.4) + auto-merge rails (§6).
 # Scan mode (no args): grade every open PR labeled agent:pr-open whose CI is done
-# and whose head SHA has no verdict yet. PASS+T0+rails ⇒ squash auto-merge.
+# and whose head SHA has no verdict yet. PASS+T0/T1+rails ⇒ squash auto-merge.
 # FAIL ⇒ one execute retry; second FAIL ⇒ agent:failed + needs-human + Novu.
 #
 # Unit-testable: `source grade.sh --lib-only` exposes rails_check without side effects.
@@ -16,9 +16,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 rails_check() {
 	local pr_json="$1" tier="$2" verdict="$3" revert="${4:-}"
 
-	# R1 — T0 + rubric PASS (CI-green is a caller precondition, re-stated here)
+	# R1 — T0/T1 + rubric PASS (CI-green is a caller precondition, re-stated here)
 	if [[ "$verdict" != "PASS" ]]; then echo "R1: rubric verdict is $verdict, not PASS"; return 1; fi
-	if [[ "$tier" != "T0" ]]; then echo "R1: tier_confirmed=$tier — only T0 auto-merges"; return 1; fi
+	if [[ "$tier" != "T0" && "$tier" != "T1" ]]; then echo "R1: tier_confirmed=$tier — only T0/T1 auto-merge"; return 1; fi
 
 	# R2 — size caps + protected paths
 	local adds dels files n
@@ -182,7 +182,7 @@ $(jq . <<<"$verdict_json")
 \`\`\`"
 
 	if [[ "$verdict" == "PASS" ]]; then
-		if [[ "$tier_confirmed" == "T0" ]]; then
+		if [[ "$tier_confirmed" == "T0" || "$tier_confirmed" == "T1" ]]; then
 			local rail_fail=""
 			rail_fail=$(rails_check "$pjson" "$tier_confirmed" "$verdict") || true
 			if [[ -z "$rail_fail" ]]; then
@@ -193,7 +193,7 @@ $(jq . <<<"$verdict_json")
 				# Close it explicitly — otherwise the done-but-open issue lingers in
 				# `spec:ready`/deps and blocks every dependent (deps_open) forever.
 				[[ "$issue" != "0" ]] && gh issue close "$issue" --repo "$REPO" --reason completed 2>/dev/null || true
-				log INFO "grade PASS pr=#$pr T0 — auto-merged + issue #$issue closed run=$run"
+				log INFO "grade PASS pr=#$pr $tier_confirmed — auto-merged + issue #$issue closed run=$run"
 				local outcome=grade_pass_first_try
 				if (( fail_count > 0 )); then outcome=grade_pass_retry; fi
 				telemetry "$run" "$turn" "$issue" grade "$model" "$tier_confirmed" unknown "$started" "$outcome" "$pr" true true "$pv"

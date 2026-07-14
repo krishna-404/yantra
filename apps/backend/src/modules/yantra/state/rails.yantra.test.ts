@@ -31,8 +31,11 @@ describe("checkRails (R1–R5)", () => {
 		);
 	});
 
-	it("R1: any tier above T0 refuses", () => {
-		for (const tier of ["T1", "T2", "T3"]) {
+	it("R1: T0 and T1 auto-merge; T2+ refuses", () => {
+		for (const tier of ["T0", "T1"]) {
+			expect(checkRails(okPr, { ...okCtx, tierConfirmed: tier })).toBeNull();
+		}
+		for (const tier of ["T2", "T3"]) {
 			expect(checkRails(okPr, { ...okCtx, tierConfirmed: tier })).toMatch(
 				/^R1/,
 			);

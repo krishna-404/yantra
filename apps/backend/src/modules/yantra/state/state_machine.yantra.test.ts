@@ -75,10 +75,21 @@ describe("happy path claim → merge", () => {
 		expect(g.effects).toContainEqual({ kind: "close_issue" });
 	});
 
-	it("routes T1+ PASS to the human review queue, then HUMAN_MERGE closes it", () => {
+	it("auto-merges a T1 under rails (T0 + T1 both eligible)", () => {
 		const g = transition(prOpen(), {
 			type: "GRADE_PASS",
 			tierConfirmed: "T1",
+			railsOk: true,
+		});
+		expect(g.turn.state).toBe("merged");
+		expect(g.effects).toContainEqual({ kind: "auto_merge", pr: 42 });
+		expect(g.effects).toContainEqual({ kind: "close_issue" });
+	});
+
+	it("routes T2+ PASS to the human review queue, then HUMAN_MERGE closes it", () => {
+		const g = transition(prOpen(), {
+			type: "GRADE_PASS",
+			tierConfirmed: "T2",
 			railsOk: true,
 		});
 		expect(g.turn.state).toBe("review_queue");
