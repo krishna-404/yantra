@@ -101,6 +101,16 @@ export const effectiveTier = (
 		: adviseTier;
 };
 
+/**
+ * Which tiers may auto-merge (with rubric PASS + rails). T0 and T1 only: both
+ * are small, self-contained changes the size rails already bound (≤150 lines,
+ * ≤5 files). T2+ always routes to human review. Must stay in lock-step with
+ * the rails tier gate (rails.yantra.ts) — the two are the same policy expressed
+ * at two layers.
+ */
+const isAutoMergeTier = (tier: TurnTier): boolean =>
+	TIER_RANK[tier] <= TIER_RANK.T1;
+
 // ── events ──────────────────────────────────────────────────────────────────
 
 export type TurnEvent =
@@ -260,10 +270,10 @@ export const transition = (
 				}
 				const passOutcome =
 					turn.gradeFailCount > 0 ? "grade_pass_retry" : "grade_pass_first_try";
-				// §2.4 + §6: auto-merge is T0 + rails ONLY. Tier honesty means a
-				// grade-raised tier blocks the merge (parity scenario 9); a rails
-				// refusal queues for human review instead (scenario 6).
-				if (tier === "T0" && event.railsOk) {
+				// §2.4 + §6: auto-merge is T0/T1 + rails. Tier honesty means a
+				// grade-raised tier (T2+) blocks the merge (parity scenario 9); a
+				// rails refusal queues for human review instead (scenario 6).
+				if (isAutoMergeTier(tier) && event.railsOk) {
 					effects.push(
 						{ kind: "auto_merge", pr: turn.pr },
 						{ kind: "record_automerge", pr: turn.pr },
@@ -275,7 +285,7 @@ export const transition = (
 						telemetryOutcome: passOutcome,
 					};
 				}
-				if (tier === "T0" && !event.railsOk) {
+				if (isAutoMergeTier(tier) && !event.railsOk) {
 					effects.push({
 						kind: "comment_rails_refusal",
 						pr: turn.pr,
