@@ -5,6 +5,7 @@ import {
 	listAppSecrets,
 	setAppSecret,
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
+import { pruneDocker } from "@backend/modules/yantra/services/docker_prune.yantra.service";
 import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
 import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { buildExecImage } from "@backend/modules/yantra/services/exec_image_builder.yantra.service";
@@ -325,6 +326,25 @@ const rebuildExecImageRoute = rpcSuperAdminProcedure
 		});
 	});
 
+// Self-maintaining disk reclaim through the Docker socket the backend already
+// holds — no SSH. Safe prune only: stopped containers + dangling images + build
+// cache; never volumes (Postgres data) or tagged images. Also runs nightly on a
+// cron; this endpoint is the on-demand cockpit button for when the disk fills
+// between passes.
+const pruneDockerRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/prune-docker", tags: ["Yantra"] })
+	.output(
+		z.object({
+			ok: z.boolean(),
+			reclaimedBytes: z.number(),
+			containersDeleted: z.number(),
+			imagesDeleted: z.number(),
+			reclaimedHuman: z.string(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async () => pruneDocker());
+
 // ── free-AI lanes (Phase 3): registry + key smoke-test ──────────────────────
 
 const listLanesRoute = rpcSuperAdminProcedure
@@ -594,6 +614,7 @@ export const yantraRouter = {
 	setAppSecret: setAppSecretRoute,
 	dockerStatus: dockerStatusRoute,
 	rebuildExecImage: rebuildExecImageRoute,
+	pruneDocker: pruneDockerRoute,
 	listLanes: listLanesRoute,
 	laneSmoke: laneSmokeRoute,
 	tryFreeLane: tryFreeLaneRoute,
