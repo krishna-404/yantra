@@ -188,34 +188,35 @@ export interface LaneModel {
 }
 
 export const LANE_MODELS: LaneModel[] = [
-	// OpenCode Zen free models FIRST — the CLI's own hosted models with generous
-	// free limits (no per-provider tier ceiling). Listed first so the default
-	// top-3 executor pick is all-OpenCode when its key is set. Model ids are the
-	// current /zen/v1 free set; confirm exact refs with `opencode models`.
+	// OpenCode Zen FREE models FIRST — the CLI's own hosted models, generous free
+	// limits (no per-provider tier ceiling). The free tier carries a `-free`
+	// suffix (confirmed via `opencode models`); the un-suffixed / gpt-5* / claude-*
+	// entries are Zen's PAID tier. Listed first so the default top-3 executor pick
+	// is all-OpenCode-free when the key is set.
 	{
-		ref: "opencode/big-pickle",
-		label: "Big Pickle (OpenCode Zen)",
+		ref: "opencode/deepseek-v4-flash-free",
+		label: "DeepSeek V4 Flash (OpenCode Zen, free)",
 		source: "opencode",
 		roles: ["execute"],
 		speed: "fast",
 	},
 	{
-		ref: "opencode/deepseek-v4-flash",
-		label: "DeepSeek V4 Flash (OpenCode Zen)",
+		ref: "opencode/north-mini-code-free",
+		label: "North Mini Code (OpenCode Zen, free)",
 		source: "opencode",
 		roles: ["execute"],
 		speed: "fast",
 	},
 	{
-		ref: "opencode/north-mini-code",
-		label: "North Mini Code (OpenCode Zen)",
+		ref: "opencode/mimo-v2.5-free",
+		label: "MiMo v2.5 (OpenCode Zen, free)",
 		source: "opencode",
 		roles: ["execute"],
-		speed: "fast",
+		speed: "medium",
 	},
 	{
-		ref: "opencode/nemotron-3-ultra",
-		label: "Nemotron 3 Ultra (OpenCode Zen)",
+		ref: "opencode/nemotron-3-ultra-free",
+		label: "Nemotron 3 Ultra (OpenCode Zen, free)",
 		source: "opencode",
 		roles: ["grade"],
 		speed: "slow",
