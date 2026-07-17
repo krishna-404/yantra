@@ -21,6 +21,15 @@ export default defineConfig({
 		// pool: 'threads',
 		globals: true,
 		setupFiles: ["./src/test/setup.ts"],
+		// The global setup.ts beforeEach opens a DB transaction and creates a
+		// logged-in user before EVERY test. Under coverage instrumentation on a
+		// loaded CI runner (a single Postgres checkpoint has been observed taking
+		// 110 s+), that DB work can exceed vitest's 10 s hook default and fail the
+		// whole coverage job on pure infra slowness — not a real regression. Give
+		// the DB hooks generous headroom so a slow-disk moment doesn't flake CI; a
+		// genuine hang is still caught by the job-level timeout well above this.
+		hookTimeout: 60_000,
+		testTimeout: 30_000,
 		include: ["src/**/*.{test,spec}.ts"],
 		exclude: ["node_modules", "dist", "**/*.d.ts"],
 		coverage: {
