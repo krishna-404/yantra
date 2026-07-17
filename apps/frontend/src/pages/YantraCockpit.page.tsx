@@ -665,6 +665,8 @@ function RunnerInfraCard({ projects }: { projects: Project[] }) {
 	const [msg, setMsg] = useState<string | null>(null);
 	const [rebuilding, setRebuilding] = useState(false);
 	const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
+	const [pruning, setPruning] = useState(false);
+	const [pruneMsg, setPruneMsg] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
 		try {
@@ -741,6 +743,37 @@ function RunnerInfraCard({ projects }: { projects: Project[] }) {
 		}
 	};
 
+	const pruneNow = async () => {
+		setPruning(true);
+		setPruneMsg("Reclaiming disk (removing stopped containers, dangling images, build cache)…");
+		try {
+			const res = await fetch(`${base}/yantra/prune-docker`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: "{}",
+			});
+			const body = (await res.json()) as {
+				ok: boolean;
+				reclaimedHuman: string;
+				imagesDeleted: number;
+				error: string | null;
+			};
+			setPruneMsg(
+				body.ok
+					? `✓ Reclaimed ${body.reclaimedHuman} (${body.imagesDeleted} images removed). Never touches volumes.`
+					: `Prune failed: ${body.error ?? "unknown"}`,
+			);
+			await load();
+		} catch (err) {
+			setPruneMsg(
+				`Couldn't prune (${err instanceof Error ? err.message : "error"}).`,
+			);
+		} finally {
+			setPruning(false);
+		}
+	};
+
 	const hintFor = (key: string) =>
 		secrets?.find((s) => s.key === key)?.valueHint;
 
@@ -786,6 +819,14 @@ function RunnerInfraCard({ projects }: { projects: Project[] }) {
 					>
 						{rebuilding ? "Rebuilding…" : "Rebuild runner image"}
 					</Button>
+					<Button
+						size="small"
+						variant="outlined"
+						disabled={pruning || docker?.reachable === false}
+						onClick={pruneNow}
+					>
+						{pruning ? "Reclaiming…" : "Reclaim disk"}
+					</Button>
 				</Stack>
 				{rebuildMsg && (
 					<Typography
@@ -794,6 +835,15 @@ function RunnerInfraCard({ projects }: { projects: Project[] }) {
 						sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.75rem" }}
 					>
 						{rebuildMsg}
+					</Typography>
+				)}
+				{pruneMsg && (
+					<Typography
+						variant="body2"
+						color="text.secondary"
+						sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.75rem" }}
+					>
+						{pruneMsg}
 					</Typography>
 				)}
 
