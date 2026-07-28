@@ -15,6 +15,7 @@ import {
 } from "@backend/configs/env.config";
 import { startReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
 import { startSilentSyncDispatchCron } from "@backend/cron_jobs/silent_sync_dispatch.cron";
+import { startYantraDockerPruneCron } from "@backend/cron_jobs/yantra_docker_prune.cron";
 import { startYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { startEventBus } from "@backend/events/events.utils";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
@@ -149,6 +150,8 @@ try {
 	// project-scoped in yantra_projects (D23); with no enabled projects the
 	// tick is a quiet no-op. Never writes to GitHub.
 	startYantraShadowTickCron();
+	// Nightly disk reclaim so the ensemble containers never hit ENOSPC.
+	startYantraDockerPruneCron();
 
 	handleServerClose(server);
 } catch (err) {

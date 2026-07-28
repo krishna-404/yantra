@@ -1,30 +1,39 @@
-import { buildEnsembleScript } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
+import {
+	ensembleScripts,
+	formatCandidateDiag,
+} from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
 import { describe, expect, it } from "vitest";
 
 /**
- * The ensemble container script is the contract between the harness and the
- * OpenCode CLI: N candidates each solve the spec, a judge synthesises one
- * answer, and the synthesised diff must pass the full self-check gate before a
- * PR opens. These assertions pin that contract so a refactor can't silently
- * drop a stage (e.g. skip the self-check, or let the judge also be a candidate).
+ * The ensemble runs candidates in parallel containers (each pushes its own
+ * branch) and a judge that synthesises from those branches. These assertions
+ * pin that two-phase contract so a refactor can't silently drop a stage (e.g.
+ * skip the self-check, or have the judge open a PR without pushing). The
+ * orchestration itself (container fan-out → judge → PR) is exercised end-to-end
+ * by the live harness; here we pin the pure, deterministic pieces.
  */
-describe("buildEnsembleScript", () => {
-	const script = buildEnsembleScript();
+describe("ensemble candidate script", () => {
+	const script = ensembleScripts.buildCandidateScript();
 
-	it("reads the model list and prompt from env-provided base64 payloads", () => {
-		expect(script).toContain('echo "$PROMPT_B64" | base64 -d');
-		expect(script).toContain('echo "$MODELS_B64" | base64 -d');
-	});
-
-	it("runs one candidate per model on its own branch", () => {
-		expect(script).toContain("while IFS= read -r MODEL <&3");
-		expect(script).toContain('git checkout -q -B "cand-$i"');
+	it("solves the spec on its own candidate branch and pushes it, no PR", () => {
+		expect(script).toContain('git checkout -q -B "$CAND_BRANCH"');
 		expect(script).toContain(
 			'opencode run "$(cat /workspace/prompt.md)" -m "$MODEL"',
 		);
+		expect(script).toContain('git push --quiet -u origin "$CAND_BRANCH"');
+		expect(script).not.toContain("gh pr create");
 	});
 
-	it("has the judge synthesise on the PR branch, not a candidate branch", () => {
+	it("exits with the no-diff sentinel when the model changed nothing", () => {
+		expect(script).toContain('{ echo "NO_DIFF"; exit 21; }');
+	});
+});
+
+describe("ensemble judge script", () => {
+	const script = ensembleScripts.buildJudgeScript();
+
+	it("gathers candidate diffs and synthesises on the PR branch", () => {
+		expect(script).toContain("git fetch -q origin");
 		expect(script).toContain('git checkout -q -B "$BRANCH"');
 		expect(script).toContain(
 			'opencode run "$(cat /workspace/judge.md)" -m "$JUDGE_MODEL"',
@@ -35,7 +44,6 @@ describe("buildEnsembleScript", () => {
 		expect(script).toContain(
 			"yarn lint && yarn check-types && yarn knip && yarn test:db:setup && yarn test:run",
 		);
-		// self-check must precede push + PR
 		expect(script.indexOf("selfcheck")).toBeLessThan(
 			script.indexOf("git push"),
 		);
@@ -44,12 +52,33 @@ describe("buildEnsembleScript", () => {
 		);
 	});
 
-	it("exits with the no-diff sentinel when the judge produced nothing", () => {
-		expect(script).toContain('{ echo "NO_DIFF"; exit 21; }');
+	it("deletes the throwaway candidate branches", () => {
+		expect(script).toContain("git push -q origin --delete");
 	});
 
 	it("drives agents non-interactively", () => {
 		expect(script).toContain("--dangerously-skip-permissions");
 		expect(script).toContain("</dev/null");
+	});
+});
+
+describe("formatCandidateDiag", () => {
+	it("renders each candidate's exit code and transcript tail", () => {
+		const out = formatCandidateDiag([
+			{ model: "nvidia/a", exitCode: 1, tail: "boom: it failed" },
+			{ model: "nvidia/b", exitCode: 21, tail: "" },
+		]);
+		expect(out).toContain("**nvidia/a** (exit 1)");
+		expect(out).toContain("boom: it failed");
+		expect(out).toContain("**nvidia/b** (exit 21)");
+		expect(out).toContain("(no output)"); // empty tail falls back
+	});
+
+	it("keeps only the last 600 chars of a long tail", () => {
+		const out = formatCandidateDiag([
+			{ model: "m", exitCode: 1, tail: "X".repeat(2000) },
+		]);
+		const fenced = out.split("```")[1] ?? "";
+		expect(fenced.trim().length).toBe(600);
 	});
 });

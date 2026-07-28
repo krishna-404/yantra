@@ -6,6 +6,7 @@ import { Card } from "@connected-repo/ui-mui/layout/Card";
 import { Container } from "@connected-repo/ui-mui/layout/Container";
 import { Stack } from "@connected-repo/ui-mui/layout/Stack";
 import { env } from "@frontend/configs/env.config";
+import { YantraChatSection } from "@frontend/pages/YantraChat.section";
 import { TextField } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 
@@ -156,7 +157,9 @@ export default function YantraCockpitPage() {
 
 				<ProjectsCard projects={projects} onChanged={refresh} />
 
-				<RunnerInfraCard />
+				<YantraChatSection base={base} projects={projects} />
+
+				<RunnerInfraCard projects={projects} />
 
 				<Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
 					<StatTile label="Total runs" value={summary?.totalRuns ?? "—"} />
@@ -494,6 +497,12 @@ function ProjectsCard({
 const LANE_KEYS: { key: string; laneId: string; label: string; help: string }[] =
 	[
 		{
+			key: "OPENCODE_API_KEY",
+			laneId: "opencode",
+			label: "OpenCode Zen",
+			help: "OpenCode's own free models — get the key at https://opencode.ai/auth",
+		},
+		{
 			key: "NVIDIA_API_KEY",
 			laneId: "nvidia",
 			label: "NVIDIA",
@@ -641,7 +650,7 @@ function SecretField({
  * free-AI provider keys (NVIDIA/Gemini/Groq) the cheaper-lane runner uses.
  * Every secret is pasted once, stored encrypted, and shown only as last-4.
  */
-function RunnerInfraCard() {
+function RunnerInfraCard({ projects }: { projects: Project[] }) {
 	const [docker, setDocker] = useState<{
 		reachable: boolean;
 		version: string | null;
@@ -654,6 +663,10 @@ function RunnerInfraCard() {
 	const [inputs, setInputs] = useState<Record<string, string>>({});
 	const [busy, setBusy] = useState(false);
 	const [msg, setMsg] = useState<string | null>(null);
+	const [rebuilding, setRebuilding] = useState(false);
+	const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
+	const [pruning, setPruning] = useState(false);
+	const [pruneMsg, setPruneMsg] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
 		try {
@@ -699,6 +712,68 @@ function RunnerInfraCard() {
 		}
 	};
 
+	const rebuildImage = async () => {
+		const projectId = projects[0]?.id;
+		if (!projectId) {
+			setRebuildMsg("Add a project first (the build files come from its repo).");
+			return;
+		}
+		setRebuilding(true);
+		setRebuildMsg("Rebuilding the runner image (~1 min)…");
+		try {
+			const res = await fetch(`${base}/yantra/rebuild-exec-image`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ projectId }),
+			});
+			const body = (await res.json()) as { ok: boolean; log: string };
+			setRebuildMsg(
+				body.ok
+					? "✓ Runner image rebuilt on the host — new config is live."
+					: `Build failed:\n${body.log.slice(-600)}`,
+			);
+			await load();
+		} catch (err) {
+			setRebuildMsg(
+				`Couldn't rebuild (${err instanceof Error ? err.message : "error"}).`,
+			);
+		} finally {
+			setRebuilding(false);
+		}
+	};
+
+	const pruneNow = async () => {
+		setPruning(true);
+		setPruneMsg("Reclaiming disk (removing stopped containers, dangling images, build cache)…");
+		try {
+			const res = await fetch(`${base}/yantra/prune-docker`, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: "{}",
+			});
+			const body = (await res.json()) as {
+				ok: boolean;
+				reclaimedHuman: string;
+				imagesDeleted: number;
+				error: string | null;
+			};
+			setPruneMsg(
+				body.ok
+					? `✓ Reclaimed ${body.reclaimedHuman} (${body.imagesDeleted} images removed). Never touches volumes.`
+					: `Prune failed: ${body.error ?? "unknown"}`,
+			);
+			await load();
+		} catch (err) {
+			setPruneMsg(
+				`Couldn't prune (${err instanceof Error ? err.message : "error"}).`,
+			);
+		} finally {
+			setPruning(false);
+		}
+	};
+
 	const hintFor = (key: string) =>
 		secrets?.find((s) => s.key === key)?.valueHint;
 
@@ -736,7 +811,41 @@ function RunnerInfraCard() {
 							/var/run/docker.sock mount and redeploy
 						</Typography>
 					)}
+					<Button
+						size="small"
+						variant="outlined"
+						disabled={rebuilding || docker?.reachable === false}
+						onClick={rebuildImage}
+					>
+						{rebuilding ? "Rebuilding…" : "Rebuild runner image"}
+					</Button>
+					<Button
+						size="small"
+						variant="outlined"
+						disabled={pruning || docker?.reachable === false}
+						onClick={pruneNow}
+					>
+						{pruning ? "Reclaiming…" : "Reclaim disk"}
+					</Button>
 				</Stack>
+				{rebuildMsg && (
+					<Typography
+						variant="body2"
+						color="text.secondary"
+						sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.75rem" }}
+					>
+						{rebuildMsg}
+					</Typography>
+				)}
+				{pruneMsg && (
+					<Typography
+						variant="body2"
+						color="text.secondary"
+						sx={{ whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.75rem" }}
+					>
+						{pruneMsg}
+					</Typography>
+				)}
 
 				<SecretField
 					label="Claude"

@@ -26,14 +26,22 @@ const PROTECTED_PATH =
 	/^\.github\/|^ops\/yantra\/|^apps\/yantra\/|^LICENSE$|auth|secret|\.env|migrations\/|^\.brain\//;
 const BRAIN_INBOX = /^\.brain\/inbox\//;
 
+/**
+ * Tiers eligible for auto-merge. T0 + T1 only — both are small, self-contained
+ * changes the R2 size caps already bound; T2+ always waits for human review.
+ * Kept in lock-step with isAutoMergeTier in state_machine.yantra.ts (same
+ * policy, two layers).
+ */
+const AUTO_MERGE_TIERS = new Set(["T0", "T1"]);
+
 /** Returns null when every rail holds, else the first violated rail. */
 export const checkRails = (pr: RailsPr, ctx: RailsContext): string | null => {
-	// R1 — T0 + rubric PASS (CI-green is a caller precondition)
+	// R1 — T0/T1 + rubric PASS (CI-green is a caller precondition)
 	if (ctx.rubricVerdict !== "PASS") {
 		return `R1: rubric verdict is ${ctx.rubricVerdict}, not PASS`;
 	}
-	if (ctx.tierConfirmed !== "T0") {
-		return `R1: tier_confirmed=${ctx.tierConfirmed} — only T0 auto-merges`;
+	if (!AUTO_MERGE_TIERS.has(ctx.tierConfirmed)) {
+		return `R1: tier_confirmed=${ctx.tierConfirmed} — only T0/T1 auto-merge`;
 	}
 
 	// R2 — size caps (reverts exempt) + protected paths (never exempt)

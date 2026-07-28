@@ -17,6 +17,9 @@ export const APP_SECRET_KEYS = [
 	"NVIDIA_API_KEY",
 	"GEMINI_API_KEY",
 	"GROQ_API_KEY",
+	// OpenCode Zen — the CLI's own hosted free models (opencode/*), auth'd via
+	// this key (from https://opencode.ai/auth). Read by opencode automatically.
+	"OPENCODE_API_KEY",
 ] as const;
 export type AppSecretKey = (typeof APP_SECRET_KEYS)[number];
 

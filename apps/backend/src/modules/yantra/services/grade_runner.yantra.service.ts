@@ -375,7 +375,12 @@ const gradeOne = async (project: GradeProject, prNumber: number) => {
 	);
 
 	if (verdict === "PASS") {
-		if (tierConfirmed === "T0") {
+		// Auto-merge tiers: T0 + T1. This gate is the ONLY code path that calls
+		// gh pr merge, so it must stay in lock-step with rails.yantra.ts
+		// (AUTO_MERGE_TIERS) and state_machine.yantra.ts (isAutoMergeTier) — the
+		// "widen rails to T0+T1" change updated those two but missed THIS one, so
+		// every T1 PASS silently fell through to human review instead of merging.
+		if (tierConfirmed === "T0" || tierConfirmed === "T1") {
 			// Gather rail inputs FRESH at merge time; checkRails is the only gate.
 			const files = await gh<{ filename: string }[]>(
 				`/repos/${repo}/pulls/${prNumber}/files?per_page=100`,
@@ -411,7 +416,10 @@ const gradeOne = async (project: GradeProject, prNumber: number) => {
 						state_reason: "completed",
 					}).catch(() => {});
 				}
-				logger.info({ pr: prNumber, issue }, "grade PASS T0 — auto-merged");
+				logger.info(
+					{ pr: prNumber, issue, tier: tierConfirmed },
+					"grade PASS — auto-merged",
+				);
 				await recordGrade(
 					project,
 					turn,

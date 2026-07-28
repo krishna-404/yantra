@@ -5,8 +5,10 @@ import {
 	listAppSecrets,
 	setAppSecret,
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
+import { pruneDocker } from "@backend/modules/yantra/services/docker_prune.yantra.service";
 import { getDockerStatus } from "@backend/modules/yantra/services/docker_status.yantra.service";
 import { runEnsembleExecute } from "@backend/modules/yantra/services/ensemble_runner.yantra.service";
+import { buildExecImage } from "@backend/modules/yantra/services/exec_image_builder.yantra.service";
 import { runFreeLaneExecute } from "@backend/modules/yantra/services/free_lane_runner.yantra.service";
 import {
 	getKillSwitch,
@@ -15,6 +17,7 @@ import {
 import {
 	candidateModels,
 	listLanes,
+	resolveFreeProviders,
 	runLaneSmoke,
 } from "@backend/modules/yantra/services/lanes.yantra.service";
 import {
@@ -300,6 +303,48 @@ const dockerStatusRoute = rpcSuperAdminProcedure
 	)
 	.handler(async () => getDockerStatus());
 
+// Self-maintaining: rebuild the OpenCode runner image through the Docker socket
+// the backend already holds — no SSH. Build files come from the repo (project
+// token) so the image always matches the deployed branch.
+const rebuildExecImageRoute = rpcSuperAdminProcedure
+	.route({
+		method: "POST",
+		path: "/yantra/rebuild-exec-image",
+		tags: ["Yantra"],
+	})
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(z.object({ ok: z.boolean(), tag: z.string(), log: z.string() }))
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "baseBranch", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+		return buildExecImage({
+			repo: project.repo,
+			baseBranch: project.baseBranch,
+			ghToken,
+		});
+	});
+
+// Self-maintaining disk reclaim through the Docker socket the backend already
+// holds — no SSH. Safe prune only: stopped containers + dangling images + build
+// cache; never volumes (Postgres data) or tagged images. Also runs nightly on a
+// cron; this endpoint is the on-demand cockpit button for when the disk fills
+// between passes.
+const pruneDockerRoute = rpcSuperAdminProcedure
+	.route({ method: "POST", path: "/yantra/prune-docker", tags: ["Yantra"] })
+	.output(
+		z.object({
+			ok: z.boolean(),
+			reclaimedBytes: z.number(),
+			containersDeleted: z.number(),
+			imagesDeleted: z.number(),
+			reclaimedHuman: z.string(),
+			error: z.string().nullable(),
+		}),
+	)
+	.handler(async () => pruneDocker());
+
 // ── free-AI lanes (Phase 3): registry + key smoke-test ──────────────────────
 
 const listLanesRoute = rpcSuperAdminProcedure
@@ -434,20 +479,20 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 			.select("id", "repo", "baseBranch", "ghTokenCiphertext");
 		const ghToken = openSecret(project.ghTokenCiphertext);
 
-		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
-		if (!nvidiaKey) {
+		const { providerKeys, sources } = await resolveFreeProviders();
+		if (sources.length === 0) {
 			return {
 				started: false,
 				models: [],
 				judge: "",
-				error: "NVIDIA_API_KEY not set",
+				error: "no free-provider key set (GROQ_API_KEY / NVIDIA_API_KEY)",
 			};
 		}
 
-		const executors = candidateModels("execute", ["nvidia"]);
-		const graders = candidateModels("grade", ["nvidia"]);
-		// Default: up to 3 distinct executors; judge = top grader (never an executor,
-		// so no self-grading — D26).
+		const executors = candidateModels("execute", sources);
+		const graders = candidateModels("grade", sources);
+		// Default: up to 3 distinct executors (Groq first); judge = top grader
+		// (never an executor, so no self-grading — D26).
 		const models = input.models ?? executors.slice(0, 3).map((m) => m.ref);
 		const judge = input.judge ?? graders[0]?.ref;
 
@@ -464,14 +509,14 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 				started: false,
 				models,
 				judge: judge ?? "",
-				error: `not a known NVIDIA executor: ${badModel}`,
+				error: `not a known executor for the configured providers: ${badModel}`,
 			};
 		if (!judge || !graders.some((g) => g.ref === judge))
 			return {
 				started: false,
 				models,
 				judge: judge ?? "",
-				error: "judge is not a known NVIDIA grader",
+				error: "judge is not a known grader for the configured providers",
 			};
 		if (models.includes(judge))
 			return {
@@ -495,7 +540,7 @@ const tryEnsembleRoute = rpcSuperAdminProcedure
 			repo: project.repo,
 			baseBranch: project.baseBranch,
 			ghToken,
-			nvidiaKey,
+			providerKeys,
 			models,
 			judge,
 			issue: input.issue,
@@ -568,6 +613,8 @@ export const yantraRouter = {
 	listAppSecrets: listAppSecretsRoute,
 	setAppSecret: setAppSecretRoute,
 	dockerStatus: dockerStatusRoute,
+	rebuildExecImage: rebuildExecImageRoute,
+	pruneDocker: pruneDockerRoute,
 	listLanes: listLanesRoute,
 	laneSmoke: laneSmokeRoute,
 	tryFreeLane: tryFreeLaneRoute,
