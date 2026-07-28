@@ -1,6 +1,6 @@
 ---
 title: Declaring browser-loaded entrypoints as knip `entry` clears false-positive unused-dep findings
-strikes: 1
+strikes: 2
 ---
 
 **Context:** Adding `knip` to CI (Y1.A). This stub originally bundled three lessons;

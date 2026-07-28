@@ -3,6 +3,7 @@ name: turbo-strict-env-needs-dotenv-file
 description: Turbo 2.x strict env mode strips custom env vars from spawned tasks — supply them via a .env file, not job/process env
 metadata:
   type: project
+strikes: 1
 ---
 
 Turbo 2.x defaults to **strict** env mode. Custom (non-system) environment

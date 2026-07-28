@@ -1,5 +1,5 @@
 ---
-strikes: 1
+strikes: 2
 ---
 
 # biome lint scans generated `coverage/` even though the formatter excludes it
