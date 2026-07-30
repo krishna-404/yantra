@@ -3,6 +3,7 @@ import { filesRouter } from "@backend/modules/files/files.router";
 import { notificationsRouter } from "@backend/modules/notifications/notifications.router";
 import { teamsAppRouter } from "@backend/modules/teams/teams_app.router";
 import { meRouter } from "@backend/modules/users/me.user_app.router";
+import { yantraUserAppRouter } from "@backend/modules/yantra/yantra.user_app.router";
 import { rpcPublicProcedure } from "@backend/procedures/public.procedure";
 import type {
 	InferRouterInputs,
@@ -41,6 +42,7 @@ export const userAppRouter = {
 	me: meRouter,
 	notifications: notificationsRouter,
 	teams: teamsAppRouter,
+	yantra: yantraUserAppRouter,
 };
 
 export type UserAppRouter = RouterClient<typeof userAppRouter>;

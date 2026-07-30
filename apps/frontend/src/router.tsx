@@ -82,6 +82,12 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 						path: "yantra",
 						lazy: lazyRoute(() => import("@frontend/pages/YantraCockpit.page")),
 					},
+					{
+						// Per-project chat (platform P3) — team-accessible, not
+						// super-admin gated. The Claude-like surface where work starts.
+						path: "projects",
+						lazy: lazyRoute(() => import("@frontend/pages/YantraChat.page")),
+					},
 				],
 			},
 		],
