@@ -3,7 +3,7 @@ name: red-ci-can-be-a-broken-base-branch-not-your-diff
 description: PR checks run against a merge commit with the base branch — a red "tests"/"coverage" leg can be pre-existing base-branch breakage, not caused by your diff
 metadata:
   type: project
-strikes: 1
+strikes: 2
 ---
 
 On a RETRY with "CI leg red: fix the root cause," don't assume the failure lives in
