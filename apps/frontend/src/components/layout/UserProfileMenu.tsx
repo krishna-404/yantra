@@ -104,7 +104,29 @@ export const UserProfileMenu = ({
 
 	return (
 		<>
-			{trigger || defaultTrigger}
+			{trigger ? (
+				<Box
+					component="button"
+					type="button"
+					onClick={handleOpen}
+					aria-label="User menu"
+					sx={{
+						display: "block",
+						width: "100%",
+						border: "none",
+						background: "none",
+						p: 0,
+						cursor: "pointer",
+						textAlign: "inherit",
+						font: "inherit",
+						color: "inherit",
+					}}
+				>
+					{trigger}
+				</Box>
+			) : (
+				defaultTrigger
+			)}
 
 			<Menu
 				anchorEl={anchorEl}
