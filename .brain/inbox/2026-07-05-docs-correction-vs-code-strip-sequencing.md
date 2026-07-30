@@ -1,5 +1,5 @@
 ---
-strikes: 1
+strikes: 2
 ---
 
 # Docs-correction specs can outrun the code strip they describe
