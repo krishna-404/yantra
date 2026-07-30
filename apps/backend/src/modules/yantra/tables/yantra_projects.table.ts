@@ -17,6 +17,17 @@ export class YantraProjectTable extends BaseTable {
 	columns = this.setColumns(
 		(t) => ({
 			id: t.ulidWithDefault().primaryKey(),
+			// Multi-tenant (Phase 4): the team that owns this project. Every member
+			// of the team can see/manage it and its routines. Nullable so the
+			// original single-operator tenant-zero row stays valid; team-scoped
+			// projects set it, super-admin-only projects leave it null.
+			teamId: t
+				.ulid()
+				.foreignKey("teams_app", "id", {
+					onUpdate: "RESTRICT",
+					onDelete: "CASCADE",
+				})
+				.nullable(),
 			repo: t.string(255),
 			baseBranch: t.string(255).default("staging"),
 			ghTokenCiphertext: t.text(),
