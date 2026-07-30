@@ -1,5 +1,23 @@
 # Yantra Loop Protocol (v0/v1)
 
+> **Deployment notes (2026-07-04):**
+> **(D20)** The integration branch is configurable via `YANTRA_BASE_BRANCH` (v0
+> default: `staging` — we always work on staging). Every mention of `main` below
+> (clone base, PR target, canary branch, branch protection) reads as that base
+> branch. `main` is the production branch Dokploy deploys; it moves only when a
+> human promotes a green staging.
+> **(D21)** Zero host-side runtime: the tick and dream orchestrators run inside
+> the `yantra-exec` image (systemd `docker run`, socket-mounted, repo mounted
+> read-only), spawning per-run containers as siblings. The VPS host runs only
+> systemd + docker. §2.2's "on host" for advise reads as "inside the orchestrator
+> container".
+> **(Free-plan note)** GitHub's auto-merge feature and branch protection are
+> unavailable on free-plan private repos. The harness therefore merges directly
+> (`gh pr merge --squash`, no `--auto`) — equivalent, because grade only reaches
+> the merge after its CI leg is green, the rubric PASSes, and rails R1–R4 hold.
+> The CI-green enforcement lives in grade.sh, not in GitHub; humans must not
+> hand-merge red PRs.
+
 The exact machine. Loop v0 (Phase 0) implements this in scripts; the `apps/yantra`
 harness (Phase 2) implements the same protocol and must pass the parity suite (§8).
 Any behavior not specified here is a bug in this document — fix the document via PR

@@ -1,6 +1,4 @@
 import type { FileSelectAll } from "@connected-repo/zod-schemas/file.zod";
-import type { JournalEntrySelectAll } from "@connected-repo/zod-schemas/journal_entry.zod";
-import type { PromptSelectAll } from "@connected-repo/zod-schemas/prompt.zod";
 import type {
 	TeamAppMemberSelectAll,
 	TeamAppSelectAll,
@@ -26,8 +24,6 @@ import { getDataProxy } from "@frontend/worker/worker.proxy";
 export type MirrorPayload =
 	| { table: "teamsApp"; rows: TeamAppSelectAll[] }
 	| { table: "teamMembers"; rows: TeamAppMemberSelectAll[] }
-	| { table: "prompts"; rows: PromptSelectAll[] }
-	| { table: "journalEntries"; rows: JournalEntrySelectAll[] }
 	| { table: "files"; rows: FileSelectAll[] };
 
 export async function mirrorToLocalDb(payload: MirrorPayload): Promise<void> {
@@ -41,12 +37,6 @@ export async function mirrorToLocalDb(payload: MirrorPayload): Promise<void> {
 				return;
 			case "teamMembers":
 				await proxy.teamMembersDb.bulkUpsert(payload.rows);
-				return;
-			case "prompts":
-				await proxy.promptsDb.bulkUpsert(payload.rows);
-				return;
-			case "journalEntries":
-				await proxy.journalEntriesDb.bulkUpsertFromServer(payload.rows);
 				return;
 			case "files":
 				await proxy.filesDb.bulkUpsertFromServer(payload.rows);

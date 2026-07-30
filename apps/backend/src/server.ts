@@ -14,8 +14,9 @@ import {
 	isTest,
 } from "@backend/configs/env.config";
 import { startReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
-import { startReminderDispatchCron } from "@backend/cron_jobs/reminder_dispatch.cron";
 import { startSilentSyncDispatchCron } from "@backend/cron_jobs/silent_sync_dispatch.cron";
+import { startYantraDockerPruneCron } from "@backend/cron_jobs/yantra_docker_prune.cron";
+import { startYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { startEventBus } from "@backend/events/events.utils";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
 import { handleServerClose } from "@backend/utils/graceful_shutdown.utils";
@@ -129,23 +130,28 @@ try {
 	});
 
 	startEventBus();
-	// Both crons feed Novu — the reminder cron ends in a triggerNotification()
-	// no-op when NOVU_SECRET_KEY is unset, and the reconcile cron hits Novu's
-	// API on every user. Without the key, both would just burn CPU on their
-	// scans. Gate the whole boot on the key so unconfigured environments
-	// (CI, first-time dev) stay quiet.
+	// The reconcile cron hits Novu's API on every user; without the key it would
+	// just burn CPU on its scan. Gate the whole boot on the key so unconfigured
+	// environments (CI, first-time dev) stay quiet.
 	if (env.NOVU_SECRET_KEY) {
-		startReminderDispatchCron();
 		startReconcileFcmTokensCron();
 		syncNovuWorkflowsInBackground();
 	} else {
-		logger.info("Novu not configured; reminder/reconcile crons skipped");
+		logger.info("Novu not configured; reconcile cron skipped");
 	}
 
 	// Silent-sync push runs independently of Novu — it uses firebase-admin
 	// directly. Gated on FIREBASE_SERVICE_ACCOUNT_JSON / GOOGLE_APPLICATION_CREDENTIALS
 	// being set (see firebase_admin.config.ts); the cron self-noops otherwise.
 	startSilentSyncDispatchCron();
+
+	// H4 shadow mode: the app decides what the harness WOULD do each tick and
+	// records it (parity record for the v0→v1 cutover). Credentials are
+	// project-scoped in yantra_projects (D23); with no enabled projects the
+	// tick is a quiet no-op. Never writes to GitHub.
+	startYantraShadowTickCron();
+	// Nightly disk reclaim so the ensemble containers never hit ENOSPC.
+	startYantraDockerPruneCron();
 
 	handleServerClose(server);
 } catch (err) {

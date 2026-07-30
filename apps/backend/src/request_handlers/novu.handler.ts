@@ -59,55 +59,56 @@ const readBody = async (req: NodeHttpRequest): Promise<unknown> => {
 // Real Client instance — must have live method bindings (addWorkflows,
 // addAgents, executeWorkflow, etc.). Passing a plain object here would fail
 // at first request with "this.client.addAgents is not a function".
-const nodeHandler: ((req: NodeHttpRequest, res: NodeHttpResponse) => Promise<void>) | null =
-	env.NOVU_SECRET_KEY
-		? (() => {
-				const novuClient = new Client({
-					secretKey: env.NOVU_SECRET_KEY,
-					apiUrl: env.NOVU_API_URL,
-					// Strict HMAC auth in prod/staging/test; only loosened in dev so the
-					// initial `novu sync` handshake doesn't 401 before the Secret Key
-					// round-trip is set up. Anyone who can reach /api/novu with strict OFF
-					// can enumerate workflows and preview steps.
-					strictAuthentication: !isDev,
-				});
+const nodeHandler:
+	| ((req: NodeHttpRequest, res: NodeHttpResponse) => Promise<void>)
+	| null = env.NOVU_SECRET_KEY
+	? (() => {
+			const novuClient = new Client({
+				secretKey: env.NOVU_SECRET_KEY,
+				apiUrl: env.NOVU_API_URL,
+				// Strict HMAC auth in prod/staging/test; only loosened in dev so the
+				// initial `novu sync` handshake doesn't 401 before the Secret Key
+				// round-trip is set up. Anyone who can reach /api/novu with strict OFF
+				// can enumerate workflows and preview steps.
+				strictAuthentication: !isDev,
+			});
 
-				const requestHandler = new NovuRequestHandler({
-					frameworkName: "node-http",
-					workflows: novuWorkflows,
-					client: novuClient,
-					handler: (req: NodeHttpRequest, res: NodeHttpResponse) => {
-						let bodyPromise: Promise<unknown> | null = null;
-						return {
-							body: () => {
-								if (!bodyPromise) bodyPromise = readBody(req);
-								return bodyPromise;
-							},
-							headers: (key: string) => {
-								const v = req.headers[key.toLowerCase()];
-								return Array.isArray(v) ? v[0] : v;
-							},
-							method: () => req.method || "GET",
-							url: () => {
-								const host = req.headers.host || "localhost";
-								const protocol = req.headers["x-forwarded-proto"] || "http";
-								return new URL(req.url || "/", `${protocol}://${host}`);
-							},
-							queryString: (key: string, url: URL) => url.searchParams.get(key),
-							transformResponse: ({ body, headers, status }) => {
-								for (const [k, v] of Object.entries(headers)) {
-									res.setHeader(k, v);
-								}
-								res.statusCode = status;
-								res.end(body);
-							},
-						};
-					},
-				});
+			const requestHandler = new NovuRequestHandler({
+				frameworkName: "node-http",
+				workflows: novuWorkflows,
+				client: novuClient,
+				handler: (req: NodeHttpRequest, res: NodeHttpResponse) => {
+					let bodyPromise: Promise<unknown> | null = null;
+					return {
+						body: () => {
+							if (!bodyPromise) bodyPromise = readBody(req);
+							return bodyPromise;
+						},
+						headers: (key: string) => {
+							const v = req.headers[key.toLowerCase()];
+							return Array.isArray(v) ? v[0] : v;
+						},
+						method: () => req.method || "GET",
+						url: () => {
+							const host = req.headers.host || "localhost";
+							const protocol = req.headers["x-forwarded-proto"] || "http";
+							return new URL(req.url || "/", `${protocol}://${host}`);
+						},
+						queryString: (key: string, url: URL) => url.searchParams.get(key),
+						transformResponse: ({ body, headers, status }) => {
+							for (const [k, v] of Object.entries(headers)) {
+								res.setHeader(k, v);
+							}
+							res.statusCode = status;
+							res.end(body);
+						},
+					};
+				},
+			});
 
-				return requestHandler.createHandler();
-			})()
-		: null;
+			return requestHandler.createHandler();
+		})()
+	: null;
 
 export const novuHandler = {
 	handle: async (req: NodeHttpRequest, res: NodeHttpResponse) => {
@@ -127,10 +128,7 @@ export const novuHandler = {
 			await nodeHandler(req, res);
 		} catch (err) {
 			if (err instanceof BodyTooLargeError) {
-				logger.warn(
-					{ url: req.url },
-					"Novu bridge rejected oversized body",
-				);
+				logger.warn({ url: req.url }, "Novu bridge rejected oversized body");
 				if (!res.writableEnded) {
 					res.statusCode = 413;
 					res.end(JSON.stringify({ error: "Payload too large" }));

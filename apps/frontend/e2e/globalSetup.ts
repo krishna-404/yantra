@@ -15,8 +15,8 @@ async function createAuthState<T extends typeof devices>(deviceConfig: T[keyof T
 		// Click the Google button which handles test authentication
 		await page.locator('text=Continue with Google').click();
 
-		// Wait for redirect to dashboard or journal-entries/new (first-run redirect)
-		await page.waitForURL(/\/(dashboard|journal-entries\/new)/);
+		// Wait for redirect to the dashboard
+		await page.waitForURL(/\/dashboard/);
 
 		// Webkit/Safari fix: wait for network to settle and a small grace period for cookies
 		await page.waitForLoadState('networkidle');
@@ -32,18 +32,29 @@ async function createAuthState<T extends typeof devices>(deviceConfig: T[keyof T
 }
 
 async function globalSetup() {
+	const isCI = process.env.CI === 'true';
+
 	try {
-		// Create separate auth states for each browser/project
-		await Promise.all([
-			// Desktop Chrome auth state
+		// Create separate auth states for each browser/project.
+		const authStates = [
+			// Desktop Chrome auth state — the only project that runs in CI.
 			createAuthState(devices["Desktop Chrome"], 'e2e/.auth/desktop-chrome-user.json'),
+		];
 
-			// Mobile Chrome auth state
-			createAuthState(devices["Pixel 5"], 'e2e/.auth/mobile-chrome-user.json'),
+		// The mobile projects (Pixel 5 / Chromium, iPhone 12 / WebKit) are gated off in CI
+		// (see playwright.config.ts), and CI installs Chromium only. Building their auth states
+		// would launch browsers that aren't installed — notably WebKit — so skip them in CI.
+		if (!isCI) {
+			authStates.push(
+				// Mobile Chrome auth state
+				createAuthState(devices["Pixel 5"], 'e2e/.auth/mobile-chrome-user.json'),
 
-			// Mobile Safari auth state
-			createAuthState(devices["iPhone 12"], 'e2e/.auth/mobile-safari-user.json'),
-		]);
+				// Mobile Safari auth state
+				createAuthState(devices["iPhone 12"], 'e2e/.auth/mobile-safari-user.json'),
+			);
+		}
+
+		await Promise.all(authStates);
 
 		console.info('✅ All E2E auth states created successfully');
 	} catch (error) {

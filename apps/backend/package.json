@@ -26,6 +26,7 @@
 		"axios": "^1.13.6",
 		"better-auth": "^1.5.0",
 		"dayjs": "^1.11.19",
+		"dockerode": "^5.0.1",
 		"dotenv": "^17.3.1",
 		"firebase-admin": "^13.0.2",
 		"jose": "^6.2.2",
@@ -42,6 +43,7 @@
 	"description": "Starter Monorepo using Turbo of Nodejs + OrchidORM + oRPC + Reactjs with opentelemetry setup",
 	"devDependencies": {
 		"@connected-repo/typescript-config": "*",
+		"@types/dockerode": "^4.0.1",
 		"@types/node": "^22.18.12",
 		"@types/pg": "^8.18.0",
 		"@vitest/coverage-v8": "^4.0.18",
@@ -52,7 +54,7 @@
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.18"
 	},
-	"license": "AGPL-3.0-only",
+	"license": "UNLICENSED",
 	"main": "src/server.ts",
 	"name": "@connected-repo/backend",
 	"private": true,

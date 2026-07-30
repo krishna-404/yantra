@@ -1,7 +1,6 @@
 import { DashboardIcon } from "@connected-repo/ui-mui/icons/DashboardIcon";
+import { GridViewIcon } from "@connected-repo/ui-mui/icons/GridViewIcon";
 import { HomeIcon } from "@connected-repo/ui-mui/icons/HomeIcon";
-import { ListIcon } from "@connected-repo/ui-mui/icons/ListIcon";
-import { PostAddIcon } from "@connected-repo/ui-mui/icons/PostAddIcon";
 
 interface NavItem {
 	/** Display label for the nav item */
@@ -26,15 +25,10 @@ export const navItems: NavItem[] = [
 		mobileIcon: <HomeIcon />, // Different icon for mobile
 	},
 	{
-		label: "Journal Entries",
-		path: "/journal-entries",
-		desktopIcon: <ListIcon fontSize="small" />,
-		mobileIcon: <ListIcon />,
-	},
-	{
-		label: "New Entry",
-		path: "/journal-entries/new",
-		desktopIcon: <PostAddIcon fontSize="small" />,
-		mobileIcon: <PostAddIcon />,
+		// The factory cockpit (tenant-zero). Server-side super-admin gate —
+		// non-admins see an access notice, so showing the entry is harmless.
+		label: "Cockpit",
+		path: "/yantra",
+		desktopIcon: <GridViewIcon fontSize="small" />,
 	},
 ];

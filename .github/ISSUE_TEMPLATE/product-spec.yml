@@ -1,0 +1,110 @@
+name: Product Spec
+description: The only intake format the Yantra loop accepts (docs/yantra/templates/product-spec.md)
+title: "[Spec] <short imperative title>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **The bar:** a cheap model dropped onto this issue knows exactly what to do — no follow-up
+        questions. Advise parks anything below the bar as `needs-human`, and that is a planning
+        failure, not an execution failure. Template + worked example:
+        [docs/yantra/templates/product-spec.md](../blob/main/docs/yantra/templates/product-spec.md).
+        A human adds `spec:ready` (or drags to board column *Agent: ready*) to release it to the loop.
+  - type: dropdown
+    id: type
+    attributes:
+      label: type
+      description: task_type — feeds telemetry and Phase 3 scorecards (loop-protocol.md §5)
+      options:
+        - docs
+        - ci
+        - strip-module
+        - harness
+        - brain
+        - feature
+        - bugfix
+        - ops
+        - other
+    validations:
+      required: true
+  - type: input
+    id: stack
+    attributes:
+      label: stack
+      description: Comma-separated tags for skill-matching
+      placeholder: "node, orchid, react, github-actions, bash"
+    validations:
+      required: true
+  - type: dropdown
+    id: tier-estimate
+    attributes:
+      label: tier-estimate
+      description: "Risk tier estimate. Advise confirms; Grade may raise. T0 mechanical · T1 low-risk · T2 feature/multi-file · T3 sensitive"
+      options:
+        - T0
+        - T1
+        - T2
+        - T3
+    validations:
+      required: true
+  - type: input
+    id: depends-on
+    attributes:
+      label: depends-on
+      description: "DAG edges — issue refs that must be closed before the harness claims this. Use — if none."
+      placeholder: "#12, #14"
+    validations:
+      required: true
+  - type: input
+    id: parallel-group
+    attributes:
+      label: parallel-group
+      description: "<phase>.<letter> — tasks in one group are independent of each other"
+      placeholder: "1.B"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who/what is hurting, what happens today, why now. 2–4 sentences. Name the "who" even when it's the loop or the operator.
+    validations:
+      required: true
+  - type: textarea
+    id: bet
+    attributes:
+      label: Bet
+      description: "One falsifiable sentence: if we ship X, then [the loop / the operator / CI] will [observable change], verifiable by [check]."
+    validations:
+      required: true
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success criteria
+      description: These become the Grade rubric's spec_fit checks, verbatim. Concrete, observable, testable — name the command/test/file. Prefer copy-pasteable greps/commands.
+      value: |
+        - [ ] Criterion 1 — …
+        - [ ] All of: `yarn lint`, `yarn check-types`, `yarn test:run` green in CI.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Explicit non-goals — this keeps the scope rubric dimension enforceable.
+    validations:
+      required: true
+  - type: textarea
+    id: evaluation
+    attributes:
+      label: Evaluation
+      description: How we know it worked after merge (canary signal, telemetry field, follow-up check), and the kill/revert condition.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & pointers
+      description: Files, prior art, relevant .brain/ entries, relevant skills — everything the executor should read BEFORE writing code. Links must resolve.
+    validations:
+      required: true

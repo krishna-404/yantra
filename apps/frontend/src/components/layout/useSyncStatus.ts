@@ -82,16 +82,11 @@ export function useSyncStatus(): SyncStatusSnapshot {
 		return await proxy.syncMetadataDb.getCycleState();
 	});
 
-	const { data: pendingEntries } = useLocalDb(
-		"journalEntries",
-		async (proxy) => (teamId ? await proxy.journalEntriesDb.countPending(teamId) : 0),
-		[teamId],
-	);
-	const { data: errorEntries } = useLocalDb(
-		"journalEntries",
-		async (proxy) => (teamId ? await proxy.journalEntriesDb.countErrors(teamId) : 0),
-		[teamId],
-	);
+	// The journal/prompt data layer has been stripped; only `files` carry
+	// pending/error state now. The `*Entries` fields are retained on the
+	// snapshot (consumed by SyncBubble / AppBadgeSync) but are always 0.
+	const pendingEntries = 0;
+	const errorEntries = 0;
 	const { data: pendingFiles } = useLocalDb(
 		"files",
 		async (proxy) => (teamId ? await proxy.filesDb.countPending(teamId) : 0),
@@ -106,8 +101,8 @@ export function useSyncStatus(): SyncStatusSnapshot {
 	const lastError = cycleState?.lastError ?? null;
 	const lastCompletedAt = cycleState?.lastCompletedAt ?? null;
 	const lastAttemptedAt = cycleState?.lastAttemptedAt ?? null;
-	const errorCount = (errorEntries ?? 0) + (errorFiles ?? 0);
-	const pendingCount = (pendingEntries ?? 0) + (pendingFiles ?? 0);
+	const errorCount = errorEntries + (errorFiles ?? 0);
+	const pendingCount = pendingEntries + (pendingFiles ?? 0);
 
 	let status: SyncStatus;
 	if (!online) status = "offline";
@@ -125,9 +120,9 @@ export function useSyncStatus(): SyncStatusSnapshot {
 		lastCompletedAt,
 		lastAttemptedAt,
 		lastError,
-		pendingEntries: pendingEntries ?? 0,
+		pendingEntries,
 		pendingFiles: pendingFiles ?? 0,
-		errorEntries: errorEntries ?? 0,
+		errorEntries,
 		errorFiles: errorFiles ?? 0,
 	};
 }

@@ -28,27 +28,17 @@ describe("Notifications Endpoints", () => {
 		});
 	});
 
-	describe("getReminderTimes", () => {
-		it("returns times stripped to HH:mm (Postgres time round-trips as HH:mm:ss)", async () => {
-			// Test fixture seeds ["08:00", "21:00"]; the router must return
-			// them in the HH:mm shape the zod contract advertises.
-			const result = await defaultClient.getReminderTimes({});
-			expect(result).toEqual(["08:00", "21:00"]);
-		});
-
-		it("rejects unauthenticated requests", async () => {
-			await expect(unauthClient.getReminderTimes({})).rejects.toThrowError(
-				ORPCError,
-			);
-		});
+	it("rejects unauthenticated requests to a protected procedure", async () => {
+		await expect(unauthClient.inboxCredentials()).rejects.toThrowError(
+			ORPCError,
+		);
 	});
 
-	describe("setReminderTimes", () => {
-		it("round-trips the times array via getReminderTimes", async () => {
-			await defaultClient.setReminderTimes({ times: ["06:00", "18:30"] });
-			const result = await defaultClient.getReminderTimes({});
-			expect(result).toEqual(["06:00", "18:30"]);
-		});
+	it("inboxCredentials returns null for an authed user when Novu is unconfigured (test env)", async () => {
+		// .env.test omits NOVU_SECRET_KEY, so the router surfaces the
+		// graceful-degradation branch. Exercises the authed router path.
+		const result = await defaultClient.inboxCredentials();
+		expect(result).toBeNull();
 	});
 });
 

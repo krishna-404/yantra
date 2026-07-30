@@ -17,7 +17,7 @@
 			"types": "./src/*.ts"
 		}
 	},
-	"license": "AGPL-3.0-only",
+	"license": "UNLICENSED",
 	"name": "@connected-repo/zod-schemas",
 	"peerDependencies": {
 		"zod": "^4.1.12"

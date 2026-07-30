@@ -65,10 +65,6 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 						lazy: lazyRoute(() => import("@frontend/pages/Dashboard.page")),
 					},
 					{
-						path: "journal-entries/*",
-						lazy: lazyRoute(() => import("@frontend/modules/journal-entries/journal-entries.router")),
-					},
-					{
 						path: "teams/*",
 						lazy: lazyRoute(() => import("@frontend/modules/teams/teams.router")),
 					},
@@ -79,6 +75,12 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 					{
 						path: "settings/sync",
 						lazy: lazyRoute(() => import("@frontend/pages/SettingsSync.page")),
+					},
+					{
+						// The factory cockpit (H11 slice) — the server enforces the
+						// super-admin gate; non-admins get the access notice.
+						path: "yantra",
+						lazy: lazyRoute(() => import("@frontend/pages/YantraCockpit.page")),
 					},
 				],
 			},

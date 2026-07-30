@@ -54,7 +54,7 @@ src/
 ### Worker Access (proxy pattern)
 ```ts
 import { getDataProxy } from "@/worker/worker.proxy";
-const entry = await (await getDataProxy()).journalEntriesDb.getById(id);
+const file = await (await getDataProxy()).filesDb.getById(id);
 ```
 Never `new Worker()` directly outside `worker.proxy.ts`.
 

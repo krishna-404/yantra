@@ -29,7 +29,8 @@ export default defineConfig({
 	globalSetup: "./e2e/globalSetup.ts",
 	fullyParallel: !isUIMode,
 	forbidOnly: isCI,
-	retries: process.env.CI ? 2 : 0,
+	// CI-only flake policy: 1 retry (2 attempts total) — a test failing twice fails the job.
+	retries: process.env.CI ? 1 : 0,
 	workers: isCI ? 1 : isUIMode ? 1 : undefined,
 	reporter: [
 		[

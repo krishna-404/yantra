@@ -35,7 +35,9 @@ const ALLOWED_CONTENT_TYPE_PREFIXES = [
 ] as const;
 
 const isAllowedContentType = (contentType: string): boolean =>
-	ALLOWED_CONTENT_TYPE_PREFIXES.some((prefix) => contentType.startsWith(prefix));
+	ALLOWED_CONTENT_TYPE_PREFIXES.some((prefix) =>
+		contentType.startsWith(prefix),
+	);
 
 // Fields shared by presign and file-existence lookups. Kept separate so the
 // existence check does not have to lie about contentType / contentLength.

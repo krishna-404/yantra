@@ -1,0 +1,9 @@
+{
+	"advise": { "lane": "claude-max", "model": "opus" },
+	"grade": { "lane": "claude-max", "model": "opus" },
+	"execute.T0": { "lane": "claude-max", "model": "sonnet" },
+	"execute.T1": { "lane": "claude-max", "model": "sonnet" },
+	"execute.T2": { "lane": "claude-max", "model": "opus" },
+	"execute.T3": { "lane": "claude-max", "model": "opus" },
+	"dream": { "lane": "claude-max", "model": "sonnet" }
+}

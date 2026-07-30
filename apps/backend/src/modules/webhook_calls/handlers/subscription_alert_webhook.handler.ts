@@ -4,10 +4,7 @@ import { subscriptionAlertWebhookTaskDef } from "@backend/events/events.schema";
 import { logger } from "@backend/utils/logger.utils";
 import axios from "axios";
 import { ulid } from "ulid";
-import {
-	SsrfBlockedError,
-	assertSafeWebhookUrl,
-} from "./ssrf_guard.utils";
+import { assertSafeWebhookUrl, SsrfBlockedError } from "./ssrf_guard.utils";
 
 // Cap response body at 1 MiB — webhooks should return small ack payloads.
 const MAX_WEBHOOK_RESPONSE_BYTES = 1024 * 1024;
@@ -42,9 +39,7 @@ const MAX_AUDIT_BODY_BYTES = 2 * 1024;
 // Hard cap on the final JSONB payload written to `response`.
 const MAX_AUDIT_JSON_BYTES = 8 * 1024;
 
-const sanitizeResponseHeaders = (
-	headers: unknown,
-): Record<string, string> => {
+const sanitizeResponseHeaders = (headers: unknown): Record<string, string> => {
 	if (!headers || typeof headers !== "object") return {};
 	const out: Record<string, string> = {};
 	for (const [rawKey, rawVal] of Object.entries(

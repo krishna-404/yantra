@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { stopReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
-import { stopReminderDispatchCron } from "@backend/cron_jobs/reminder_dispatch.cron";
+import { stopYantraDockerPruneCron } from "@backend/cron_jobs/yantra_docker_prune.cron";
+import { stopYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { db } from "@backend/db/db";
 import { getTbusStartPromise } from "@backend/events/events.utils";
 import { tbus } from "@backend/events/tbus";
@@ -98,8 +99,9 @@ export const handleServerClose = (server: Server) => {
 				]);
 			}
 
-			stopReminderDispatchCron();
 			stopReconcileFcmTokensCron();
+			stopYantraShadowTickCron();
+			stopYantraDockerPruneCron();
 
 			await tbus.stop().catch((error) => {
 				logger.error({ err: error }, "Error stopping pg-tbus event bus");
@@ -232,7 +234,11 @@ export const handleServerClose = (server: Server) => {
 		// message/stack instead of stripping to just `code`. Keep `reason`
 		// as an extra key for anyone piping raw JSON.
 		logger.error(
-			{ err: reason instanceof Error ? reason : new Error(String(reason)), reason, promise },
+			{
+				err: reason instanceof Error ? reason : new Error(String(reason)),
+				reason,
+				promise,
+			},
 			"Unhandled rejection",
 		);
 		forceShutdown();

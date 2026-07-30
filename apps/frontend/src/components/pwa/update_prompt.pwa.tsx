@@ -4,6 +4,7 @@ import { Snackbar } from "@connected-repo/ui-mui/feedback/Snackbar";
 import { Button } from "@connected-repo/ui-mui/form/Button";
 import { Box } from "@connected-repo/ui-mui/layout/Box";
 import { Stack } from "@connected-repo/ui-mui/layout/Stack";
+import { swReloadStormDetected } from "@frontend/pwa-init";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -24,6 +25,16 @@ import { useState } from "react";
  * new bundle can land while the user is stuck on Login.
  */
 export function PwaUpdatePrompt() {
+  // The ONLY SW registration in the app happens inside useRegisterSW below
+  // (see pwa-init.ts for why there must be exactly one). During a detected
+  // reload storm we must not register at all, and hooks can't be
+  // conditional — so the storm check gates the inner component that owns
+  // the hook.
+  if (swReloadStormDetected()) return null;
+  return <PwaUpdatePromptInner />;
+}
+
+function PwaUpdatePromptInner() {
   const theme = useTheme();
   const {
     needRefresh: [needRefresh],

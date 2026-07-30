@@ -1,6 +1,10 @@
-# Full-Stack TypeScript Monorepo
+# Yantra
 
-Production-ready Turborepo monorepo for building full-stack TypeScript applications with end-to-end type safety.
+**Yantra** (यन्त्र) is a self-hosted autonomous code factory: a loop that plans, builds, verifies, and ships — starting with this repo itself as its first project (tenant-zero).
+Every unit of work runs the same four-role cycle — advise → execute → grade → dream — with GitHub Issues as intake, CI + a model-graded rubric as the gate, and hard auto-merge rails.
+The codebase underneath is a full-stack TypeScript monorepo (the factory's substrate and its first workload).
+Master spec: [docs/yantra/00-overview.md](./docs/yantra/00-overview.md) · the machine: [docs/yantra/loop-protocol.md](./docs/yantra/loop-protocol.md).
+Status: Phase 0 bootstrap. Private; all rights reserved (final license = open decision OD-1).
 
 > [!NOTE]
 > This project follows a **Bimodal Documentation System**.
@@ -15,7 +19,7 @@ Production-ready Turborepo monorepo for building full-stack TypeScript applicati
 - **Database**: PostgreSQL with [Orchid ORM](https://orchid-orm.netlify.app/)
 - **Task Queue**: [pg-tbus](https://github.com/hextech-dev/pg-tbus) (PostgreSQL-based event bus)
 - **Authentication**: Better Auth (Google OAuth)
-- **Notifications**: SuprSend
+- **Notifications**: Novu (`apps/backend/src/novu/`)
 - **Observability**: OpenTelemetry, Sentry
 - **Security**: Helmet, CORS, Rate Limiting, API key auth
 
@@ -26,7 +30,7 @@ Production-ready Turborepo monorepo for building full-stack TypeScript applicati
 - **UI**: Material-UI (via `@connected-repo/ui-mui`)
 - **PWA**: Vite PWA plugin with offline support
 - **Offline Storage**: Dexie.js (IndexedDB wrapper)
-- **Sync**: SSE-based delta sync with real-time updates
+- **Sync**: Offline-first delta sync via FCM silent push + service worker (see `apps/backend/src/modules/sync/`)
 - **Workers**: Two-worker architecture (DataWorker + MediaWorker)
 - **Testing**: Playwright (E2E)
 
@@ -77,8 +81,8 @@ Production-ready Turborepo monorepo for building full-stack TypeScript applicati
 
 1. Clone the repository:
 ```bash
-git clone git@github.com:shipmyapp/connected-repo.git
-cd connected-repo
+git clone git@github.com:krishna-404/yantra.git
+cd yantra
 ```
 
 2. Set up environment variables:
@@ -153,6 +157,14 @@ There is deliberately no bare `test:e2e` — pick your intent explicitly. `:with
 is what you want on a fresh clone, after switching branches, or any time the
 frontend `dist/` might have been built in the wrong mode. `:no-build` is the
 fast-iterate path once a test-mode build is in place.
+
+### CI
+
+`.github/workflows/ci.yml` (added Y0.4) runs two jobs on every PR and push to `main`/`staging`:
+- **checks**: `yarn build`, `yarn lint`, `yarn check-types`
+- **tests**: Postgres 16 service container + `yarn test:run` (Vitest)
+
+Playwright E2E, coverage gates, and knip are not wired into CI yet (Phase 1 / Y1.A).
 
 ## Key Features
 
@@ -342,4 +354,4 @@ Shared Zod schemas in `packages/zod-schemas/`:
 
 ## License
 
-[AGPL-3.0](./LICENSE) - Copyright (c) 2025 Hexatech Hub Solutions LLP, India
+All rights reserved — see [LICENSE](./LICENSE). Final license is open decision OD-1 (docs/yantra/00-overview.md §1).

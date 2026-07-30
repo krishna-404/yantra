@@ -1,15 +1,13 @@
 import {
-	journalEntryCreatedFanoutTaskDef,
 	subscriptionAlertWebhookTaskDef,
 	userCreatedEventDef,
 	userDeletedEventDef,
-	userReminderTaskDef,
+	yantraLiveTurnTaskDef,
 } from "@backend/events/events.schema";
-import { journalEntryCreatedFanoutHandler } from "@backend/modules/journal-entries/notifications/created_fanout.notifications.journal_entries";
-import { reminderNotificationJournalEntryHandler } from "@backend/modules/journal-entries/notifications/reminder.notifications.journal_entries";
 import { userCreatedNotificationHandler } from "@backend/modules/users/notifications/user_created.notifications.user";
 import { userDeletedNotificationHandler } from "@backend/modules/users/notifications/user_deleted.notifications.user";
 import { subscriptionAlertWebhookHandler } from "@backend/modules/webhook_calls/handlers/subscription_alert_webhook.handler";
+import { runLiveTurn } from "@backend/modules/yantra/services/live_turn.yantra.service";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
 import { logger } from "@backend/utils/logger.utils";
 import type { Query } from "orchid-orm";
@@ -60,13 +58,6 @@ export const startEventBus = (): Promise<void> => {
 
 			tbus.registerTask(
 				createTaskHandler({
-					taskDef: userReminderTaskDef,
-					handler: reminderNotificationJournalEntryHandler,
-				}),
-			);
-
-			tbus.registerTask(
-				createTaskHandler({
 					taskDef: subscriptionAlertWebhookTaskDef,
 					handler: subscriptionAlertWebhookHandler,
 				}),
@@ -74,8 +65,10 @@ export const startEventBus = (): Promise<void> => {
 
 			tbus.registerTask(
 				createTaskHandler({
-					taskDef: journalEntryCreatedFanoutTaskDef,
-					handler: journalEntryCreatedFanoutHandler,
+					taskDef: yantraLiveTurnTaskDef,
+					handler: async ({ input }) => {
+						await runLiveTurn(input);
+					},
 				}),
 			);
 

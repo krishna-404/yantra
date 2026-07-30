@@ -22,7 +22,9 @@ function initFirebaseAdmin(): admin.app.App | null {
 
 	if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 		try {
-			const parsed = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON) as admin.ServiceAccount;
+			const parsed = JSON.parse(
+				env.FIREBASE_SERVICE_ACCOUNT_JSON,
+			) as admin.ServiceAccount;
 			return admin.initializeApp({
 				credential: admin.credential.cert(parsed),
 			});

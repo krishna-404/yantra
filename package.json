@@ -2,7 +2,6 @@
 	"author": "Balkrishna Agarwal <krishna@shipmyapp.in>",
 	"dependencies": {
 		"@orpc/server": "^1.14.6",
-		"ulid": "^3.0.1",
 		"zod": "^4.3.6"
 	},
 	"description": "Starter Monorepo using Turbo of Nodejs + OrchidORM + oRPC + Reactjs with opentelemetry setup",
@@ -17,11 +16,11 @@
 	"engines": {
 		"node": ">=22"
 	},
-	"license": "AGPL-3.0-only",
-	"name": "connected-repo",
+	"license": "UNLICENSED",
+	"name": "yantra",
 	"packageManager": "yarn@1.22.22",
 	"private": true,
-	"repository": "git@github.com:shipmyapp/connected-repo.git",
+	"repository": "git@github.com:krishna-404/yantra.git",
 	"scripts": {
 		"build": "npx turbo run build",
 		"check-types": "turbo run check-types",

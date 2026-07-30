@@ -160,7 +160,7 @@ export default function ProfilePage() {
 
 				<NotificationSettings />
 
-				<AppVersionLabel prefix="OneQ · " />
+				<AppVersionLabel prefix="Yantra · " />
 			</Stack>
 
 			<CreateTeamDialog open={createOpen} onClose={() => setCreateOpen(false)} />

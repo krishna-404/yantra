@@ -24,7 +24,8 @@ import { describe, expect, it } from "vitest";
 // actually read. Passing an empty object cast to the parameter type keeps
 // the runtime happy without dragging the full better-auth factory setup
 // into a unit test.
-const rawCreatorArg = {} as Parameters<AdapterFactoryCustomizeAdapterCreator>[0];
+const rawCreatorArg =
+	{} as Parameters<AdapterFactoryCustomizeAdapterCreator>[0];
 const eq = (field: string, value: string): CleanedWhere => ({
 	field,
 	value,

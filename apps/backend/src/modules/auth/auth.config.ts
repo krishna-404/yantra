@@ -3,10 +3,7 @@ import { env, isDev, isProd, isTest } from "@backend/configs/env.config";
 import { db } from "@backend/db/db";
 import { logger } from "@backend/utils/logger.utils";
 import { themeSettingZod } from "@connected-repo/zod-schemas/enums.zod";
-import {
-	uniqueTimeArrayZod,
-	zTimezone,
-} from "@connected-repo/zod-schemas/zod_utils";
+import { zTimezone } from "@connected-repo/zod-schemas/zod_utils";
 import { betterAuth } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
 import { bearer, phoneNumber } from "better-auth/plugins";
@@ -22,9 +19,7 @@ import { orchidAdapter } from "./orchid-adapter/factory.orchid_adapter";
 const APPLE_SECRET_TTL_MS = 60 * 60 * 1000; // must stay <= JWT expiry in apple.lib.ts
 const APPLE_SECRET_REFRESH_MARGIN_MS = 60 * 1000;
 
-let appleClientSecretCache:
-	| { secret: string; expiresAt: number }
-	| undefined;
+let appleClientSecretCache: { secret: string; expiresAt: number } | undefined;
 let appleClientSecretInflight: Promise<string | undefined> | undefined;
 
 async function getAppleClientSecret(): Promise<string | undefined> {
@@ -310,16 +305,6 @@ export const auth = betterAuth({
 				validator: {
 					input: themeSettingZod,
 					output: themeSettingZod,
-				},
-			},
-			journalReminderTimes: {
-				type: "string[]",
-				required: true,
-				defaultValue: [],
-				input: true,
-				validator: {
-					input: uniqueTimeArrayZod,
-					output: uniqueTimeArrayZod,
 				},
 			},
 			activeTeamAppId: {

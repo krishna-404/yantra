@@ -1,4 +1,3 @@
-import { db } from "@backend/db/db";
 import { buildInboxCredentials } from "@backend/modules/notifications/services/inbox_credentials.notifications.service";
 import {
 	registerFcmDevice,
@@ -8,10 +7,7 @@ import { rpcProtectedProcedure } from "@backend/procedures/protected.procedure";
 import { rpcSuperAdminProcedure } from "@backend/procedures/super_admin.procedure";
 import { triggerNotification } from "@backend/utils/notifications.utils";
 import { devicePlatformZod } from "@connected-repo/zod-schemas/enums.zod";
-import {
-	uniqueTimeArrayZod,
-	zString,
-} from "@connected-repo/zod-schemas/zod_utils";
+import { zString } from "@connected-repo/zod-schemas/zod_utils";
 import { z } from "zod";
 
 const TEST_PUSH_WORKFLOW_ID = "test-push";
@@ -65,32 +61,6 @@ const inboxCredentials = rpcProtectedProcedure
 		return buildInboxCredentials(user.id);
 	});
 
-// Postgres `time` values round-trip as `HH:mm:ss`; the zod contract is `HH:mm`.
-// The users table declares an inner `.parse()` to strip the seconds but
-// orchid does not fan array-inner parses across elements, so we normalise at
-// the API boundary. Same treatment is applied wherever `journalReminderTimes`
-// is emitted (see journal-entries getAll for the joined-author case).
-const stripSeconds = (t: string): string => (t.length > 5 ? t.slice(0, 5) : t);
-
-const getReminderTimes = rpcProtectedProcedure
-	.output(uniqueTimeArrayZod)
-	.handler(async ({ context: { user } }) => {
-		const row = await db.users
-			.select("journalReminderTimes")
-			.findOptional(user.id);
-		return (row?.journalReminderTimes ?? []).map(stripSeconds);
-	});
-
-const setReminderTimes = rpcProtectedProcedure
-	.input(z.object({ times: uniqueTimeArrayZod }))
-	.output(z.object({ times: uniqueTimeArrayZod }))
-	.handler(async ({ input, context: { user } }) => {
-		await db.users.where({ id: user.id }).update({
-			journalReminderTimes: input.times,
-		});
-		return { times: input.times };
-	});
-
 // Behind super-admin gate — any authenticated user calling this could spam
 // their own OS-level push and consume Novu quota. The super-admin procedure
 // also layers a 30 req/min rate limit for a second line of defense.
@@ -115,7 +85,5 @@ export const notificationsRouter = {
 	registerDevice,
 	revokeDevice,
 	inboxCredentials,
-	getReminderTimes,
-	setReminderTimes,
 	testSendPush,
 };

@@ -1,6 +1,6 @@
+import path from "node:path";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react-swc";
-import path from "node:path";
 import { defineConfig, loadEnv } from "vite";
 import { analyzer } from 'vite-bundle-analyzer';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -66,8 +66,8 @@ export default defineConfig(({ mode }) => {
 					}
 					: {}),
 				manifest: {
-					name: "OneQ",
-					short_name: "OneQ",
+					name: "Yantra",
+					short_name: "Yantra",
 					start_url: "/",
 					display: "standalone",
 					background_color: "#ffffff",

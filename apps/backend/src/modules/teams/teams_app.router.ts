@@ -117,22 +117,20 @@ const removeTeamMember = rpcTeamOwnerAdminProcedure
 	.route({ method: "DELETE", tags: ["Teams"] })
 	.input(z.object({ id: z.ulid() }))
 	.output(z.object({ success: z.boolean() }))
-	.handler(
-		async ({ input: { id }, context: { activeTeamMemberRole } }) => {
-			// Default scope on team_members restricts to the active team, so
-			// looking up by id will 404 for members of other teams.
-			const target = await db.teamMembers.where({ id }).takeOptional();
-			if (!target) throw new Error("Member not found");
+	.handler(async ({ input: { id }, context: { activeTeamMemberRole } }) => {
+		// Default scope on team_members restricts to the active team, so
+		// looking up by id will 404 for members of other teams.
+		const target = await db.teamMembers.where({ id }).takeOptional();
+		if (!target) throw new Error("Member not found");
 
-			// Owners cannot be removed by Admins
-			if (target.role === "Owner" && activeTeamMemberRole === "Admin") {
-				throw new Error("Unauthorized: Admins cannot remove the Owner");
-			}
+		// Owners cannot be removed by Admins
+		if (target.role === "Owner" && activeTeamMemberRole === "Admin") {
+			throw new Error("Unauthorized: Admins cannot remove the Owner");
+		}
 
-			await db.teamMembers.where({ id }).delete();
-			return { success: true };
-		},
-	);
+		await db.teamMembers.where({ id }).delete();
+		return { success: true };
+	});
 
 const updateMemberRole = rpcProtectedActiveTeamProcedure
 	.route({ method: "PUT", tags: ["Teams"] })
@@ -180,7 +178,9 @@ const setActiveTeam = rpcProtectedProcedure
 				message: "Not a member of this team.",
 			});
 		}
-		await db.users.where({ id: user.id }).update({ activeTeamAppId: teamAppId });
+		await db.users
+			.where({ id: user.id })
+			.update({ activeTeamAppId: teamAppId });
 		return { activeTeamAppId: teamAppId };
 	});
 

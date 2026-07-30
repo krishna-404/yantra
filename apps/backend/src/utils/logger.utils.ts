@@ -19,6 +19,18 @@ const loggerOptions: pino.LoggerOptions = {
 		service: env.OTEL_SERVICE_NAME,
 		environment: env.NODE_ENV,
 	},
+	// Backstop: secret-bearing fields must never reach log output even when a
+	// serialized error echoes request input (oRPC ValidationError does).
+	redact: {
+		paths: [
+			"err.data.ghToken",
+			"err.cause.data.ghToken",
+			"err.data.token",
+			"err.data.password",
+			"err.data.secret",
+		],
+		censor: "[redacted]",
+	},
 };
 
 // Pretty single-line logs in dev by default. Set LOG_PRETTY=false to emit raw
