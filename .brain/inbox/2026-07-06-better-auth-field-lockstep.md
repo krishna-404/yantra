@@ -1,5 +1,5 @@
 ---
-strikes: 1
+strikes: 2
 ---
 
 # better-auth additionalFields must change in lockstep (server ↔ client)
