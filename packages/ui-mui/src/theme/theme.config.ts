@@ -3,59 +3,75 @@ import { createTheme } from "@mui/material/styles";
 import "./theme.types"; // Import type augmentations
 
 /**
- * Base theme configuration shared across light and dark modes
+ * Design system — warm, restrained, premium (Claude-adjacent). One confident
+ * accent (terracotta) over warm neutrals; generous radii; borders over heavy
+ * shadows; a real weight hierarchy. Shared across light and dark.
  */
+
+// The single brand accent, consistent across modes.
+const ACCENT = "#c96442";
+const ACCENT_LIGHT = "#d97757";
+const ACCENT_DARK = "#b0512f";
+
 const baseThemeConfig = {
 	typography: {
 		fontFamily: [
 			"-apple-system",
 			"BlinkMacSystemFont",
 			'"Segoe UI"',
+			"Inter",
 			"Roboto",
 			'"Helvetica Neue"',
 			"Arial",
 			"sans-serif",
 		].join(","),
-		h1: {
-			fontSize: "2.5rem",
-			fontWeight: 500,
-		},
-		h2: {
-			fontSize: "2rem",
-			fontWeight: 500,
-		},
-		h3: {
-			fontSize: "1.75rem",
-			fontWeight: 500,
-		},
-		h4: {
-			fontSize: "1.5rem",
-			fontWeight: 500,
-		},
-		h5: {
-			fontSize: "1.25rem",
-			fontWeight: 500,
-		},
-		h6: {
-			fontSize: "1rem",
-			fontWeight: 500,
-		},
+		h1: { fontSize: "2.5rem", fontWeight: 700, letterSpacing: "-0.02em" },
+		h2: { fontSize: "2rem", fontWeight: 700, letterSpacing: "-0.02em" },
+		h3: { fontSize: "1.75rem", fontWeight: 700, letterSpacing: "-0.015em" },
+		h4: { fontSize: "1.5rem", fontWeight: 700, letterSpacing: "-0.015em" },
+		h5: { fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.01em" },
+		h6: { fontSize: "1.05rem", fontWeight: 700, letterSpacing: "-0.01em" },
+		subtitle1: { fontWeight: 600 },
+		subtitle2: { fontWeight: 600 },
+		button: { fontWeight: 600, letterSpacing: 0 },
+		overline: { letterSpacing: "0.08em", fontWeight: 700 },
 	},
 	shape: {
-		borderRadius: 5,
+		borderRadius: 10,
 	},
 	spacing: 8,
 	components: {
+		MuiCssBaseline: {
+			styleOverrides: {
+				body: {
+					WebkitFontSmoothing: "antialiased",
+					MozOsxFontSmoothing: "grayscale",
+					// Slim, unobtrusive scrollbars — a small premium tell.
+					"*::-webkit-scrollbar": { width: 10, height: 10 },
+					"*::-webkit-scrollbar-thumb": {
+						backgroundColor: "rgba(128,128,128,0.35)",
+						borderRadius: 8,
+						border: "2px solid transparent",
+						backgroundClip: "content-box",
+					},
+					"*::-webkit-scrollbar-thumb:hover": {
+						backgroundColor: "rgba(128,128,128,0.55)",
+					},
+					"*::-webkit-scrollbar-track": { backgroundColor: "transparent" },
+				},
+			},
+		},
 		MuiButton: {
 			styleOverrides: {
 				root: {
 					textTransform: "none" as const,
-					fontWeight: 500,
+					fontWeight: 600,
+					borderRadius: 8,
+					paddingInline: 14,
 				},
+				sizeSmall: { paddingInline: 12 },
 			},
-			defaultProps: {
-				disableElevation: true,
-			},
+			defaultProps: { disableElevation: true },
 		},
 		MuiTextField: {
 			defaultProps: {
@@ -63,26 +79,39 @@ const baseThemeConfig = {
 				size: "small" as const,
 			},
 		},
+		MuiOutlinedInput: {
+			styleOverrides: {
+				root: { borderRadius: 10 },
+			},
+		},
+		MuiPaper: {
+			// Kill MUI's dark-mode elevation overlay so surfaces are true-color.
+			styleOverrides: { root: { backgroundImage: "none" } },
+		},
 		MuiCard: {
 			styleOverrides: {
 				root: {
-					boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)",
+					borderRadius: 14,
+					border: "1px solid rgba(128,128,128,0.18)",
+					boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.05)",
+					backgroundImage: "none",
 				},
 			},
 		},
+		MuiDialog: {
+			styleOverrides: { paper: { borderRadius: 16 } },
+		},
+		MuiMenu: {
+			styleOverrides: { paper: { borderRadius: 12 } },
+		},
 		MuiAlert: {
-			styleOverrides: {
-				root: {
-					borderRadius: 5,
-				},
-			},
+			styleOverrides: { root: { borderRadius: 10 } },
 		},
 	},
 };
 
 /**
- * Creates a theme with the specified mode (light or dark)
- * Preserves all component overrides and customizations
+ * Creates a theme with the specified mode (light or dark).
  */
 export const createAppTheme = (mode: PaletteMode = "light") => {
 	return createTheme({
@@ -91,103 +120,113 @@ export const createAppTheme = (mode: PaletteMode = "light") => {
 			mode,
 			...(mode === "light"
 				? {
-						// Light mode colors
 						primary: {
-							main: "#007bff",
-							light: "#4da3ff",
-							dark: "#0056b3",
-							lighter: "rgba(0, 123, 255, 0.08)", // For hover/selected states
+							main: ACCENT,
+							light: ACCENT_LIGHT,
+							dark: ACCENT_DARK,
+							lighter: "rgba(201, 100, 66, 0.08)",
+							contrastText: "#ffffff",
 						},
 						secondary: {
-							main: "#6c757d",
-							light: "#868e96",
-							dark: "#495057",
+							main: "#6b6760",
+							light: "#8a857c",
+							dark: "#4a4640",
 							contrastText: "#fff",
 						},
 						success: {
-							main: "#28a745",
-							light: "#48b461",
-							dark: "#1e7e34",
-							lighter: "rgba(40, 167, 69, 0.08)",
+							main: "#2f8f5b",
+							light: "#4aa574",
+							dark: "#227044",
+							lighter: "rgba(47, 143, 91, 0.08)",
 							contrastText: "#fff",
 						},
 						error: {
-							main: "#dc3545",
-							light: "#e35d6a",
-							dark: "#bd2130",
-							lighter: "rgba(220, 53, 69, 0.08)",
+							main: "#c0392b",
+							light: "#d15547",
+							dark: "#9e2b20",
+							lighter: "rgba(192, 57, 43, 0.08)",
 							contrastText: "#fff",
 						},
 						warning: {
-							main: "#ffc107",
-							light: "#ffcd38",
-							dark: "#d39e00",
-							contrastText: "#000",
+							main: "#c9820c",
+							light: "#e0a53b",
+							dark: "#a06800",
+							contrastText: "#fff",
 						},
 						info: {
-							main: "#17a2b8",
-							light: "#45b5c6",
-							dark: "#117a8b",
+							main: "#3a7ca5",
+							light: "#5a97bd",
+							dark: "#2c627f",
 							contrastText: "#fff",
 						},
 						background: {
-							default: "#f5f5f5",
+							default: "#f4f3ee",
 							paper: "#ffffff",
 						},
 						text: {
-							primary: "#212121",
-							secondary: "#666666",
-							disabled: "#9e9e9e",
+							primary: "#1f1e1d",
+							secondary: "#6b6760",
+							disabled: "#a7a29b",
+						},
+						divider: "rgba(31, 30, 29, 0.09)",
+						action: {
+							hover: "rgba(31, 30, 29, 0.04)",
+							selected: "rgba(201, 100, 66, 0.10)",
 						},
 				  }
 				: {
-						// Dark mode colors
 						primary: {
-							main: "#4da3ff",
-							light: "#80bdff",
-							dark: "#007bff",
-							lighter: "rgba(77, 163, 255, 0.12)",
+							main: ACCENT_LIGHT,
+							light: "#e08c6f",
+							dark: ACCENT,
+							lighter: "rgba(217, 119, 87, 0.14)",
+							contrastText: "#2b2a27",
 						},
 						secondary: {
-							main: "#868e96",
-							light: "#adb5bd",
-							dark: "#6c757d",
-							contrastText: "#fff",
+							main: "#9b968e",
+							light: "#b8b3aa",
+							dark: "#6b6760",
+							contrastText: "#1f1e1d",
 						},
 						success: {
-							main: "#48b461",
-							light: "#6ec283",
-							dark: "#28a745",
-							lighter: "rgba(72, 180, 97, 0.12)",
-							contrastText: "#fff",
+							main: "#5bbb83",
+							light: "#7cc99b",
+							dark: "#3f9c66",
+							lighter: "rgba(91, 187, 131, 0.14)",
+							contrastText: "#1f1e1d",
 						},
 						error: {
-							main: "#e35d6a",
-							light: "#e97c86",
-							dark: "#dc3545",
-							lighter: "rgba(227, 93, 106, 0.12)",
-							contrastText: "#fff",
+							main: "#e07a6e",
+							light: "#e8968c",
+							dark: "#c0392b",
+							lighter: "rgba(224, 122, 110, 0.14)",
+							contrastText: "#1f1e1d",
 						},
 						warning: {
-							main: "#ffcd38",
-							light: "#ffd966",
-							dark: "#ffc107",
-							contrastText: "#000",
+							main: "#e0a53b",
+							light: "#e8ba63",
+							dark: "#c9820c",
+							contrastText: "#1f1e1d",
 						},
 						info: {
-							main: "#45b5c6",
-							light: "#6dc4d2",
-							dark: "#17a2b8",
-							contrastText: "#fff",
+							main: "#6da8c9",
+							light: "#8fbdd6",
+							dark: "#3a7ca5",
+							contrastText: "#1f1e1d",
 						},
 						background: {
-							default: "#121212",
-							paper: "#1e1e1e",
+							default: "#191816",
+							paper: "#211f1d",
 						},
 						text: {
-							primary: "#ffffff",
-							secondary: "#b0b0b0",
-							disabled: "#666666",
+							primary: "#f4f3ef",
+							secondary: "#9b968e",
+							disabled: "#6b6760",
+						},
+						divider: "rgba(255, 255, 255, 0.08)",
+						action: {
+							hover: "rgba(255, 255, 255, 0.05)",
+							selected: "rgba(217, 119, 87, 0.14)",
 						},
 				  }),
 		},

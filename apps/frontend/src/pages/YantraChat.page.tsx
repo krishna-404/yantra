@@ -89,24 +89,32 @@ export default function YantraChatPage() {
 						{selected.autoMergeToMain ? " · auto-merge" : ""}
 					</Typography>
 				</Box>
-				<Stack direction="row" spacing={0.5}>
-					<Button
-						size="small"
-						variant={tab === "chat" ? "contained" : "text"}
-						onClick={() => setTab("chat")}
-						sx={{ textTransform: "none" }}
-					>
-						Chat
-					</Button>
-					<Button
-						size="small"
-						variant={tab === "settings" ? "contained" : "text"}
-						onClick={() => setTab("settings")}
-						sx={{ textTransform: "none" }}
-					>
-						Settings
-					</Button>
-				</Stack>
+				<Box
+					sx={{
+						display: "inline-flex",
+						gap: 0.5,
+						p: 0.5,
+						borderRadius: 2.5,
+						bgcolor: "action.hover",
+					}}
+				>
+					{(["chat", "settings"] as const).map((t) => (
+						<Button
+							key={t}
+							size="small"
+							disableElevation
+							variant={tab === t ? "contained" : "text"}
+							onClick={() => setTab(t)}
+							sx={{
+								borderRadius: 2,
+								minWidth: 82,
+								color: tab === t ? undefined : "text.secondary",
+							}}
+						>
+							{t === "chat" ? "Chat" : "Settings"}
+						</Button>
+					))}
+				</Box>
 			</Stack>
 
 			<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -183,10 +191,23 @@ function ChatPane({ project }: { project: YantraProject }) {
 		>
 			<Box sx={{ flex: 1, overflowY: "auto", mb: 2 }}>
 				{messages.length === 0 && (
-					<Typography variant="body2" sx={{ color: "text.secondary", p: 1 }}>
-						Describe what you want built in plain words — a free model drafts the
-						spec, you review and queue it, and the factory picks it up.
-					</Typography>
+					<Stack
+						alignItems="center"
+						justifyContent="center"
+						spacing={1}
+						sx={{ height: "100%", textAlign: "center", px: 3 }}
+					>
+						<Typography variant="h5" sx={{ fontWeight: 700 }}>
+							What should we build?
+						</Typography>
+						<Typography
+							variant="body2"
+							sx={{ color: "text.secondary", maxWidth: 440 }}
+						>
+							Describe it in plain words — a free model drafts the spec, you
+							review and queue it, and the factory ships it.
+						</Typography>
+					</Stack>
 				)}
 				<Stack spacing={1.5}>
 					{messages.map((m) => (
@@ -209,13 +230,30 @@ function ChatPane({ project }: { project: YantraProject }) {
 				</Alert>
 			)}
 
-			<Stack direction="row" spacing={1}>
+			<Box
+				sx={{
+					display: "flex",
+					alignItems: "flex-end",
+					gap: 1,
+					p: 1,
+					pl: 2,
+					borderRadius: 3.5,
+					border: "1px solid",
+					borderColor: "divider",
+					bgcolor: "background.paper",
+					transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+					"&:focus-within": {
+						borderColor: "primary.main",
+						boxShadow: (t) => `0 0 0 3px ${t.palette.primary.lighter}`,
+					},
+				}}
+			>
 				<TextField
 					fullWidth
 					multiline
-					maxRows={5}
-					size="small"
-					placeholder="Describe the work… (Enter to send)"
+					maxRows={8}
+					variant="standard"
+					placeholder="Describe the work…  (Enter to send, Shift+Enter for newline)"
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={(e) => {
@@ -225,16 +263,18 @@ function ChatPane({ project }: { project: YantraProject }) {
 						}
 					}}
 					disabled={busy}
+					InputProps={{ disableUnderline: true }}
+					sx={{ py: 0.75 }}
 				/>
 				<Button
 					variant="contained"
 					onClick={() => void send()}
 					disabled={busy || input.trim().length < 4}
-					sx={{ textTransform: "none" }}
+					sx={{ borderRadius: 2.5, minWidth: 0, px: 2.5, py: 1 }}
 				>
 					Send
 				</Button>
-			</Stack>
+			</Box>
 		</Box>
 	);
 }
