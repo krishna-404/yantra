@@ -37,6 +37,11 @@ export class YantraProjectTable extends BaseTable {
 			// "shadow" = decide + record only. "live" = act (claim, spawn advise/
 			// execute containers, open PRs). The H9 cutover lever, per project.
 			mode: t.string(10).default("shadow"),
+			// Per-project autonomy: may yantra merge a passing feature branch to
+			// main (prod) on its own, or must a human click merge in the yantra UI?
+			// Default false — a project goes straight to prod only when the team
+			// opts in. The grade/merge path checks this before any merge to main.
+			autoMergeToMain: t.boolean().default(false),
 			...t.timestampsAsNumbers(),
 		}),
 		(t) => t.unique(["repo", "baseBranch"]),
