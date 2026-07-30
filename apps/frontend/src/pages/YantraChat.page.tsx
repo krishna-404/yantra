@@ -244,7 +244,7 @@ function ChatPane({ project }: { project: YantraProject }) {
 					transition: "border-color 0.15s ease, box-shadow 0.15s ease",
 					"&:focus-within": {
 						borderColor: "primary.main",
-						boxShadow: (t) => `0 0 0 3px ${t.palette.primary.lighter}`,
+						boxShadow: "0 0 0 3px rgba(201, 100, 66, 0.22)",
 					},
 				}}
 			>
