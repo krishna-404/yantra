@@ -3,40 +3,27 @@ import { Alert } from "@connected-repo/ui-mui/feedback/Alert";
 import { Button } from "@connected-repo/ui-mui/form/Button";
 import { Box } from "@connected-repo/ui-mui/layout/Box";
 import { Card } from "@connected-repo/ui-mui/layout/Card";
+import { Divider } from "@connected-repo/ui-mui/layout/Divider";
 import { Stack } from "@connected-repo/ui-mui/layout/Stack";
+import {
+	useProjects,
+	type YantraProject,
+} from "@frontend/contexts/YantraProjectsContext";
 import { orpcFetch } from "@frontend/utils/orpc.client";
 import {
 	CircularProgress,
-	Divider,
-	Drawer,
 	FormControlLabel,
 	MenuItem,
 	Switch,
 	TextField,
-	useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 /**
- * Yantra Projects — the Claude-like surface (platform P3). A left rail lists the
- * team's projects (a drawer on mobile, a sidebar on desktop); the main pane is
- * the selected project's chat or its settings. Fully responsive.
- *
- * Chat: describe → a free model drafts a spec → queue it as a spec:ready issue.
- * Settings: repo config, mode, per-project autoMergeToMain, GitHub token.
- * Persistence + live monitor + Routines are later slices.
+ * Yantra project pane (P3) — the main content next to the shell sidebar. Shows
+ * the selected project's Chat or Settings. Selection + the project list live in
+ * the shell (YantraSidebar / YantraProjectsContext); this pane is just content.
  */
-
-interface Project {
-	id: string;
-	repo: string;
-	baseBranch: string;
-	mode: string;
-	enabled: boolean;
-	ghTokenHint: string;
-	autoMergeToMain: boolean;
-}
 
 interface Draft {
 	title: string;
@@ -57,262 +44,83 @@ const nextMsgId = (): number => {
 	return msgSeq;
 };
 
-const RAIL_WIDTH = 280;
-
 export default function YantraChatPage() {
-	const theme = useTheme();
-	const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-	const [projects, setProjects] = useState<Project[]>([]);
-	const [selectedId, setSelectedId] = useState("");
+	const { projects, selectedId, loading, reload } = useProjects();
 	const [tab, setTab] = useState<"chat" | "settings">("chat");
-	const [navOpen, setNavOpen] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	const loadProjects = useCallback(async () => {
-		try {
-			const rows = await orpcFetch.yantra.listProjects();
-			setProjects(rows);
-			setSelectedId((cur) => cur || rows[0]?.id || "");
-		} catch (e) {
-			setError(e instanceof Error ? e.message : "Couldn't load projects");
-		}
-	}, []);
-
-	useEffect(() => {
-		void loadProjects();
-	}, [loadProjects]);
-
 	const selected = projects.find((p) => p.id === selectedId) ?? null;
 
-	const rail = (
-		<ProjectRail
-			projects={projects}
-			selectedId={selectedId}
-			onSelect={(id) => {
-				setSelectedId(id);
-				setTab("chat");
-				setNavOpen(false);
-			}}
-			onCreated={(p) => {
-				setProjects((prev) => [...prev, p]);
-				setSelectedId(p.id);
-				setNavOpen(false);
-			}}
-		/>
-	);
+	if (loading && projects.length === 0) {
+		return (
+			<Stack alignItems="center" justifyContent="center" sx={{ height: "100%" }}>
+				<CircularProgress size={22} />
+			</Stack>
+		);
+	}
+
+	if (!selected) {
+		return (
+			<Stack alignItems="center" justifyContent="center" sx={{ height: "100%", p: 4 }}>
+				<Typography variant="h6" sx={{ fontWeight: 700 }}>
+					No project selected
+				</Typography>
+				<Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+					{projects.length === 0
+						? "Add a project from the sidebar to get started."
+						: "Pick a project from the sidebar."}
+				</Typography>
+			</Stack>
+		);
+	}
 
 	return (
-		<Box sx={{ display: "flex", height: "100%", minHeight: 0 }}>
-			{/* Left rail: permanent sidebar on desktop, temporary drawer on mobile */}
-			{isMobile ? (
-				<Drawer open={navOpen} onClose={() => setNavOpen(false)}>
-					<Box sx={{ width: RAIL_WIDTH, height: "100%" }}>{rail}</Box>
-				</Drawer>
-			) : (
-				<Box
-					sx={{
-						width: RAIL_WIDTH,
-						flexShrink: 0,
-						borderRight: "1px solid",
-						borderColor: "divider",
-						height: "100%",
-						overflowY: "auto",
-					}}
-				>
-					{rail}
-				</Box>
-			)}
-
-			{/* Main pane */}
-			<Box
-				sx={{
-					flex: 1,
-					minWidth: 0,
-					display: "flex",
-					flexDirection: "column",
-					height: "100%",
-				}}
+		<Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+			<Stack
+				direction="row"
+				spacing={1}
+				alignItems="center"
+				sx={{ px: { xs: 2, md: 3 }, py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
 			>
-				<Stack
-					direction="row"
-					spacing={1}
-					alignItems="center"
-					sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
-				>
-					{isMobile && (
-						<Button size="small" variant="outlined" onClick={() => setNavOpen(true)}>
-							☰ Projects
-						</Button>
-					)}
-					<Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }} noWrap>
-						{selected ? selected.repo : "No project selected"}
+				<Box sx={{ flex: 1, minWidth: 0 }}>
+					<Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+						{selected.repo}
 					</Typography>
-					{selected && (
-						<Stack direction="row" spacing={1}>
-							<Button
-								size="small"
-								variant={tab === "chat" ? "contained" : "text"}
-								onClick={() => setTab("chat")}
-							>
-								Chat
-							</Button>
-							<Button
-								size="small"
-								variant={tab === "settings" ? "contained" : "text"}
-								onClick={() => setTab("settings")}
-							>
-								Settings
-							</Button>
-						</Stack>
-					)}
-				</Stack>
-
-				{error && (
-					<Alert severity="error" sx={{ m: 2 }}>
-						{error}
-					</Alert>
-				)}
-
-				<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-					{!selected && (
-						<Typography variant="body2" sx={{ p: 3, opacity: 0.7 }}>
-							{projects.length === 0
-								? "No projects yet — add one from the Projects panel."
-								: "Pick a project from the Projects panel."}
-						</Typography>
-					)}
-					{selected && tab === "chat" && (
-						<ChatPane key={selected.id} project={selected} />
-					)}
-					{selected && tab === "settings" && (
-						<SettingsPane
-							key={selected.id}
-							project={selected}
-							onSaved={loadProjects}
-						/>
-					)}
+					<Typography variant="caption" sx={{ color: "text.secondary" }}>
+						{selected.baseBranch} · {selected.mode}
+						{selected.autoMergeToMain ? " · auto-merge" : ""}
+					</Typography>
 				</Box>
+				<Stack direction="row" spacing={0.5}>
+					<Button
+						size="small"
+						variant={tab === "chat" ? "contained" : "text"}
+						onClick={() => setTab("chat")}
+						sx={{ textTransform: "none" }}
+					>
+						Chat
+					</Button>
+					<Button
+						size="small"
+						variant={tab === "settings" ? "contained" : "text"}
+						onClick={() => setTab("settings")}
+						sx={{ textTransform: "none" }}
+					>
+						Settings
+					</Button>
+				</Stack>
+			</Stack>
+
+			<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+				{tab === "chat" ? (
+					<ChatPane key={selected.id} project={selected} />
+				) : (
+					<SettingsPane key={selected.id} project={selected} onSaved={reload} />
+				)}
 			</Box>
 		</Box>
 	);
 }
 
-function ProjectRail({
-	projects,
-	selectedId,
-	onSelect,
-	onCreated,
-}: {
-	projects: Project[];
-	selectedId: string;
-	onSelect: (id: string) => void;
-	onCreated: (p: Project) => void;
-}) {
-	const [adding, setAdding] = useState(false);
-	const [repo, setRepo] = useState("");
-	const [baseBranch, setBaseBranch] = useState("staging");
-	const [ghToken, setGhToken] = useState("");
-	const [busy, setBusy] = useState(false);
-	const [err, setErr] = useState<string | null>(null);
-
-	const create = async () => {
-		setBusy(true);
-		setErr(null);
-		try {
-			const p = await orpcFetch.yantra.createProject({
-				repo: repo.trim(),
-				baseBranch: baseBranch.trim(),
-				ghToken: ghToken.trim(),
-			});
-			onCreated(p);
-			setAdding(false);
-			setRepo("");
-			setGhToken("");
-		} catch (e) {
-			setErr(e instanceof Error ? e.message : "Couldn't add project");
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	return (
-		<Stack sx={{ p: 1.5, height: "100%" }} spacing={1}>
-			<Stack direction="row" alignItems="center" justifyContent="space-between">
-				<Typography variant="subtitle2" sx={{ fontWeight: 800, opacity: 0.7 }}>
-					PROJECTS
-				</Typography>
-				<Button size="small" onClick={() => setAdding((v) => !v)}>
-					{adding ? "Cancel" : "+ New"}
-				</Button>
-			</Stack>
-
-			{adding && (
-				<Card sx={{ p: 1.5 }}>
-					<Stack spacing={1}>
-						<TextField
-							size="small"
-							label="repo (owner/name)"
-							value={repo}
-							onChange={(e) => setRepo(e.target.value)}
-						/>
-						<TextField
-							size="small"
-							label="base branch"
-							value={baseBranch}
-							onChange={(e) => setBaseBranch(e.target.value)}
-						/>
-						<TextField
-							size="small"
-							type="password"
-							label="GitHub token (PAT)"
-							value={ghToken}
-							onChange={(e) => setGhToken(e.target.value)}
-						/>
-						{err && <Alert severity="error">{err}</Alert>}
-						<Button
-							variant="contained"
-							size="small"
-							disabled={busy || repo.trim().length < 3 || ghToken.trim().length < 20}
-							onClick={() => void create()}
-						>
-							{busy ? "Adding…" : "Add project"}
-						</Button>
-					</Stack>
-				</Card>
-			)}
-
-			<Divider />
-
-			<Stack spacing={0.5} sx={{ overflowY: "auto" }}>
-				{projects.length === 0 && (
-					<Typography variant="body2" sx={{ opacity: 0.6, p: 1 }}>
-						No projects yet.
-					</Typography>
-				)}
-				{projects.map((p) => (
-					<Button
-						key={p.id}
-						fullWidth
-						variant={p.id === selectedId ? "contained" : "text"}
-						onClick={() => onSelect(p.id)}
-						sx={{ justifyContent: "flex-start", textTransform: "none" }}
-					>
-						<Stack sx={{ minWidth: 0, alignItems: "flex-start" }}>
-							<Typography variant="body2" noWrap sx={{ maxWidth: RAIL_WIDTH - 60 }}>
-								{p.repo}
-							</Typography>
-							<Typography variant="caption" sx={{ opacity: 0.6 }}>
-								{p.baseBranch} · {p.mode}
-							</Typography>
-						</Stack>
-					</Button>
-				))}
-			</Stack>
-		</Stack>
-	);
-}
-
-function ChatPane({ project }: { project: Project }) {
+function ChatPane({ project }: { project: YantraProject }) {
 	const [messages, setMessages] = useState<Msg[]>([]);
 	const [input, setInput] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -360,10 +168,22 @@ function ChatPane({ project }: { project: Project }) {
 	);
 
 	return (
-		<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>
+		<Box
+			sx={{
+				flex: 1,
+				minHeight: 0,
+				display: "flex",
+				flexDirection: "column",
+				width: "100%",
+				maxWidth: 820,
+				mx: "auto",
+				px: { xs: 2, md: 3 },
+				py: 2,
+			}}
+		>
 			<Box sx={{ flex: 1, overflowY: "auto", mb: 2 }}>
 				{messages.length === 0 && (
-					<Typography variant="body2" sx={{ opacity: 0.6, p: 1 }}>
+					<Typography variant="body2" sx={{ color: "text.secondary", p: 1 }}>
 						Describe what you want built in plain words — a free model drafts the
 						spec, you review and queue it, and the factory picks it up.
 					</Typography>
@@ -375,7 +195,7 @@ function ChatPane({ project }: { project: Project }) {
 					{busy && (
 						<Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1 }}>
 							<CircularProgress size={16} />
-							<Typography variant="body2" sx={{ opacity: 0.7 }}>
+							<Typography variant="body2" sx={{ color: "text.secondary" }}>
 								Thinking…
 							</Typography>
 						</Stack>
@@ -393,7 +213,7 @@ function ChatPane({ project }: { project: Project }) {
 				<TextField
 					fullWidth
 					multiline
-					maxRows={4}
+					maxRows={5}
 					size="small"
 					placeholder="Describe the work… (Enter to send)"
 					value={input}
@@ -410,6 +230,7 @@ function ChatPane({ project }: { project: Project }) {
 					variant="contained"
 					onClick={() => void send()}
 					disabled={busy || input.trim().length < 4}
+					sx={{ textTransform: "none" }}
 				>
 					Send
 				</Button>
@@ -422,8 +243,8 @@ function SettingsPane({
 	project,
 	onSaved,
 }: {
-	project: Project;
-	onSaved: () => void;
+	project: YantraProject;
+	onSaved: () => Promise<void>;
 }) {
 	const [baseBranch, setBaseBranch] = useState(project.baseBranch);
 	const [mode, setMode] = useState(project.mode);
@@ -454,7 +275,7 @@ function SettingsPane({
 				setNewToken("");
 			}
 			setMsg("Saved.");
-			onSaved();
+			await onSaved();
 		} catch (e) {
 			setErr(e instanceof Error ? e.message : "Couldn't save settings");
 		} finally {
@@ -463,16 +284,10 @@ function SettingsPane({
 	};
 
 	return (
-		<Box sx={{ p: 2, overflowY: "auto" }}>
-			<Card sx={{ p: 2, maxWidth: 560 }}>
+		<Box sx={{ overflowY: "auto", px: { xs: 2, md: 3 }, py: 2 }}>
+			<Card sx={{ p: 2.5, maxWidth: 560 }}>
 				<Stack spacing={2}>
-					<TextField
-						size="small"
-						label="Repository"
-						value={project.repo}
-						disabled
-						helperText="Repo is fixed at creation."
-					/>
+					<TextField size="small" label="Repository" value={project.repo} disabled />
 					<TextField
 						size="small"
 						label="Base branch"
@@ -491,21 +306,11 @@ function SettingsPane({
 						<MenuItem value="live">live</MenuItem>
 					</TextField>
 					<FormControlLabel
-						control={
-							<Switch
-								checked={autoMerge}
-								onChange={(e) => setAutoMerge(e.target.checked)}
-							/>
-						}
+						control={<Switch checked={autoMerge} onChange={(e) => setAutoMerge(e.target.checked)} />}
 						label="Auto-merge passing PRs to main (prod)"
 					/>
 					<FormControlLabel
-						control={
-							<Switch
-								checked={enabled}
-								onChange={(e) => setEnabled(e.target.checked)}
-							/>
-						}
+						control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
 						label="Enabled (factory works this project)"
 					/>
 					<Divider />
@@ -520,7 +325,12 @@ function SettingsPane({
 					/>
 					{msg && <Alert severity="success">{msg}</Alert>}
 					{err && <Alert severity="error">{err}</Alert>}
-					<Button variant="contained" disabled={busy} onClick={() => void save()}>
+					<Button
+						variant="contained"
+						disabled={busy}
+						onClick={() => void save()}
+						sx={{ textTransform: "none", alignSelf: "flex-start" }}
+					>
 						{busy ? "Saving…" : "Save settings"}
 					</Button>
 				</Stack>
@@ -564,7 +374,7 @@ function Bubble({
 	return (
 		<Box sx={{ maxWidth: "95%" }}>
 			<Card sx={{ p: 2 }}>
-				<Typography variant="caption" sx={{ opacity: 0.6 }}>
+				<Typography variant="caption" sx={{ color: "text.secondary" }}>
 					Draft spec · groomed by {d.groomedBy}
 				</Typography>
 				<Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 0.5 }}>
@@ -586,7 +396,7 @@ function Bubble({
 				<Button
 					variant="contained"
 					size="small"
-					sx={{ mt: 1.5 }}
+					sx={{ mt: 1.5, textTransform: "none" }}
 					disabled={busy}
 					onClick={() => onQueue(d)}
 				>

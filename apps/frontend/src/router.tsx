@@ -49,7 +49,7 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 		children: [
 			{
 				index: true,
-				loader: () => redirect("/dashboard"),
+				loader: () => redirect("/projects"),
 			},
 			{
 				path: "auth/*",
@@ -77,14 +77,8 @@ const routerObjectWithNavbar: ReactRouterWithNavbar[] = [
 						lazy: lazyRoute(() => import("@frontend/pages/SettingsSync.page")),
 					},
 					{
-						// The factory cockpit (H11 slice) — the server enforces the
-						// super-admin gate; non-admins get the access notice.
-						path: "yantra",
-						lazy: lazyRoute(() => import("@frontend/pages/YantraCockpit.page")),
-					},
-					{
-						// Per-project chat (platform P3) — team-accessible, not
-						// super-admin gated. The Claude-like surface where work starts.
+						// The Yantra app (platform P3) — the Claude-style shell lives in
+						// AppLayout; this route renders the selected project's pane.
 						path: "projects",
 						lazy: lazyRoute(() => import("@frontend/pages/YantraChat.page")),
 					},
