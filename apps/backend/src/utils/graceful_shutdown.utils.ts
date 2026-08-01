@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { stopReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_tokens.cron";
 import { stopYantraDockerPruneCron } from "@backend/cron_jobs/yantra_docker_prune.cron";
+import { stopYantraDreamCron } from "@backend/cron_jobs/yantra_dream.cron";
 import { stopYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { db } from "@backend/db/db";
 import { getTbusStartPromise } from "@backend/events/events.utils";
@@ -102,6 +103,7 @@ export const handleServerClose = (server: Server) => {
 			stopReconcileFcmTokensCron();
 			stopYantraShadowTickCron();
 			stopYantraDockerPruneCron();
+			stopYantraDreamCron();
 
 			await tbus.stop().catch((error) => {
 				logger.error({ err: error }, "Error stopping pg-tbus event bus");
