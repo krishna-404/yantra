@@ -17,6 +17,7 @@ import { startReconcileFcmTokensCron } from "@backend/cron_jobs/reconcile_fcm_to
 import { startSilentSyncDispatchCron } from "@backend/cron_jobs/silent_sync_dispatch.cron";
 import { startYantraDockerPruneCron } from "@backend/cron_jobs/yantra_docker_prune.cron";
 import { startYantraDreamCron } from "@backend/cron_jobs/yantra_dream.cron";
+import { startYantraRoutinesCron } from "@backend/cron_jobs/yantra_routines.cron";
 import { startYantraShadowTickCron } from "@backend/cron_jobs/yantra_shadow_tick.cron";
 import { startEventBus } from "@backend/events/events.utils";
 import { captureBackendException } from "@backend/utils/backend-error-tracking.utils";
@@ -154,6 +155,7 @@ try {
 	// Nightly disk reclaim so the ensemble containers never hit ENOSPC.
 	startYantraDockerPruneCron();
 	startYantraDreamCron();
+	startYantraRoutinesCron();
 
 	handleServerClose(server);
 } catch (err) {
