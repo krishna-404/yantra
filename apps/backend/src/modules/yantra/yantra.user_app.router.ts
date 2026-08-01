@@ -1,5 +1,9 @@
 import { db } from "@backend/db/db";
 import {
+	gh,
+	ghRequest,
+} from "@backend/modules/yantra/services/gh_client.yantra.service";
+import {
 	openSecret,
 	sealSecret,
 } from "@backend/modules/yantra/services/secret_box.yantra.service";
@@ -242,8 +246,140 @@ const queueSpec = rpcProtectedActiveTeamProcedure
 		return created;
 	});
 
+/**
+ * Live monitor (#27) — what the factory is doing on this project, in-app, so
+ * you never have to leave yantra to ask "what happened?".
+ */
+const statusZod = z.object({
+	runs: z.array(
+		z.object({
+			run: z.string(),
+			issue: z.number(),
+			role: z.string(),
+			tier: z.string(),
+			outcome: z.string(),
+			pr: z.number(),
+			merged: z.boolean(),
+			autoMerged: z.boolean(),
+			wallS: z.number(),
+			startedAt: z.number(),
+		}),
+	),
+	openPrs: z.array(
+		z.object({
+			number: z.number(),
+			title: z.string(),
+			url: z.string(),
+			tier: z.string(),
+			draft: z.boolean(),
+		}),
+	),
+	readyCount: z.number(),
+	workingCount: z.number(),
+});
+
+const projectStatus = rpcProtectedActiveTeamProcedure
+	.route({ method: "GET", tags: ["Yantra"] })
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(statusZod)
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+
+		const runs = await db.yantraTelemetry
+			.where({ repo: project.repo })
+			.order({ startedAt: "DESC" })
+			.limit(25)
+			.select(
+				"run",
+				"issue",
+				"role",
+				"tier",
+				"outcome",
+				"pr",
+				"merged",
+				"autoMerged",
+				"wallS",
+				"startedAt",
+			);
+
+		// GitHub is the source of truth for what's in flight. A failure here
+		// (revoked PAT, API down) degrades the pane rather than breaking it.
+		const [prs, ready, working] = await Promise.all([
+			gh<
+				{
+					number: number;
+					title: string;
+					html_url: string;
+					draft: boolean;
+					labels: { name: string }[];
+				}[]
+			>(`/repos/${project.repo}/pulls?state=open&per_page=20`, ghToken).catch(
+				() => [],
+			),
+			gh<unknown[]>(
+				`/repos/${project.repo}/issues?labels=spec:ready&state=open&per_page=50`,
+				ghToken,
+			).catch(() => []),
+			gh<unknown[]>(
+				`/repos/${project.repo}/issues?labels=agent:working&state=open&per_page=50`,
+				ghToken,
+			).catch(() => []),
+		]);
+
+		return {
+			runs,
+			openPrs: prs.map((p) => ({
+				number: p.number,
+				title: p.title,
+				url: p.html_url,
+				tier:
+					(p.labels ?? []).find((l) => l.name.startsWith("tier:"))?.name ?? "",
+				draft: Boolean(p.draft),
+			})),
+			readyCount: ready.length,
+			workingCount: working.length,
+		};
+	});
+
+/**
+ * The human half of the promote model (#24): when a project has auto-promote
+ * OFF, a passing PR waits for a person. This is that click — squash-merge into
+ * the project's production branch, from inside yantra.
+ */
+const promotePr = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(
+		z.object({ projectId: z.string().min(1), pr: z.number().int().positive() }),
+	)
+	.output(z.object({ merged: z.boolean(), message: z.string() }))
+	.handler(async ({ input }) => {
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "ghTokenCiphertext");
+		const ghToken = openSecret(project.ghTokenCiphertext);
+		try {
+			await ghRequest(
+				"PUT",
+				`/repos/${project.repo}/pulls/${input.pr}/merge`,
+				ghToken,
+				{ merge_method: "squash" },
+			);
+			return { merged: true, message: `Merged #${input.pr}.` };
+		} catch (err) {
+			return {
+				merged: false,
+				message: err instanceof Error ? err.message : "Merge failed",
+			};
+		}
+	});
+
 export const yantraUserAppRouter = {
 	listProjects,
+	projectStatus,
+	promotePr,
 	listMessages,
 	sendMessage,
 	createProject,
