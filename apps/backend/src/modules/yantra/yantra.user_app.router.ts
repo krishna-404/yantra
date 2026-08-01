@@ -137,20 +137,77 @@ const setProjectToken = rpcProtectedActiveTeamProcedure
 		return { ok: true };
 	});
 
-const groom = rpcProtectedProcedure
+const draftZod = z.object({
+	title: z.string(),
+	tier: z.string(),
+	body: z.string(),
+	groomedBy: z.string(),
+});
+
+const messageZod = z.object({
+	id: z.string(),
+	role: z.string(),
+	text: z.string(),
+	payload: z.unknown().nullable(),
+	createdAt: z.number(),
+});
+
+/** The persisted thread for a project, oldest first (#26). */
+const listMessages = rpcProtectedActiveTeamProcedure
+	.route({ method: "GET", tags: ["Yantra"] })
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(z.array(messageZod))
+	.handler(async ({ input }) => {
+		return db.yantraChatMessages
+			.where({ projectId: input.projectId })
+			.order({ createdAt: "ASC" })
+			.limit(200)
+			.select("id", "role", "text", "payload", "createdAt");
+	});
+
+/**
+ * One chat turn: persist what the user said, groom it into a spec draft, and
+ * persist that too. Both turns are stored so a refresh (or a teammate opening
+ * the same project) sees the whole conversation.
+ */
+const sendMessage = rpcProtectedActiveTeamProcedure
 	.route({ method: "POST", tags: ["Yantra"] })
-	.input(z.object({ idea: z.string().min(4).max(2000) }))
-	.output(
+	.input(
 		z.object({
-			title: z.string(),
-			tier: z.string(),
-			body: z.string(),
-			groomedBy: z.string(),
+			projectId: z.string().min(1),
+			idea: z.string().min(4).max(2000),
 		}),
 	)
-	.handler(async ({ input }) => groomIdea(input.idea));
+	.output(z.object({ draft: draftZod, messages: z.array(messageZod) }))
+	.handler(async ({ input, context }) => {
+		const teamId = context.user.activeTeamAppId;
+		const userMsg = await db.yantraChatMessages
+			.create({
+				teamId,
+				projectId: input.projectId,
+				role: "user",
+				text: input.idea.trim(),
+				authorUserId: context.user.id,
+			})
+			.select("id", "role", "text", "payload", "createdAt");
 
-const queueSpec = rpcProtectedProcedure
+		const draft = await groomIdea(input.idea);
+
+		const draftMsg = await db.yantraChatMessages
+			.create({
+				teamId,
+				projectId: input.projectId,
+				role: "draft",
+				text: draft.title,
+				payload: draft,
+				authorUserId: context.user.id,
+			})
+			.select("id", "role", "text", "payload", "createdAt");
+
+		return { draft, messages: [userMsg, draftMsg] };
+	});
+
+const queueSpec = rpcProtectedActiveTeamProcedure
 	.route({ method: "POST", tags: ["Yantra"] })
 	.input(
 		z.object({
@@ -161,25 +218,36 @@ const queueSpec = rpcProtectedProcedure
 		}),
 	)
 	.output(z.object({ issue: z.number(), url: z.string() }))
-	.handler(async ({ input }) => {
+	.handler(async ({ input, context }) => {
 		const project = await db.yantraProjects
 			.findBy({ id: input.projectId })
 			.select("repo", "ghTokenCiphertext");
 		const ghToken = openSecret(project.ghTokenCiphertext);
-		return createReadySpec({
+		const created = await createReadySpec({
 			repo: project.repo,
 			ghToken,
 			title: input.title,
 			body: input.body,
 			tier: input.tier,
 		});
+		// Record the outcome in the thread so the conversation shows what shipped.
+		await db.yantraChatMessages.create({
+			teamId: context.user.activeTeamAppId,
+			projectId: input.projectId,
+			role: "queued",
+			text: input.title,
+			payload: { ...created, tier: input.tier },
+			authorUserId: context.user.id,
+		});
+		return created;
 	});
 
 export const yantraUserAppRouter = {
 	listProjects,
+	listMessages,
+	sendMessage,
 	createProject,
 	updateProject,
 	setProjectToken,
-	groom,
 	queueSpec,
 };
