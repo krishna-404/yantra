@@ -3,7 +3,7 @@ name: playwright-globalsetup-ci-browser-parity
 description: Playwright globalSetup must only launch browsers CI actually installs — CI-gated projects don't gate the globalSetup that seeds their auth state
 metadata:
   type: project
-strikes: 1
+strikes: 2
 ---
 
 Playwright's `projects` array can be gated per-environment (e.g. mobile projects
