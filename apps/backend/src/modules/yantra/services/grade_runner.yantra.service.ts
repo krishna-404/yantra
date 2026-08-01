@@ -5,10 +5,7 @@ import {
 	gh,
 	ghRequest,
 } from "@backend/modules/yantra/services/gh_client.yantra.service";
-import {
-	fetchRepoFile,
-	parsePromptVersion,
-} from "@backend/modules/yantra/services/repo_files.yantra.service";
+import { fetchRepoFile } from "@backend/modules/yantra/services/repo_files.yantra.service";
 import {
 	addIssueLabels,
 	commentOnIssue,

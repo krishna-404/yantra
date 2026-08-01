@@ -56,7 +56,9 @@ const listProjects = rpcProtectedProcedure
 	.route({ method: "GET", tags: ["Yantra"] })
 	.output(z.array(projectZod))
 	.handler(async () => {
-		return db.yantraProjects.order({ createdAt: "ASC" }).select(...PROJECT_COLUMNS);
+		return db.yantraProjects
+			.order({ createdAt: "ASC" })
+			.select(...PROJECT_COLUMNS);
 	});
 
 const createProject = rpcProtectedActiveTeamProcedure

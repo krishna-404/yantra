@@ -105,7 +105,7 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 									{p.repo}
 								</Typography>
 								<Typography variant="caption" sx={{ color: "text.secondary" }} noWrap>
-									{p.baseBranch} · {p.mode}
+									{p.productionBranch || "main"} ← {p.baseBranch} · {p.mode}
 								</Typography>
 							</Box>
 						);
@@ -170,6 +170,9 @@ function NewProjectDialog({
 }) {
 	const [repo, setRepo] = useState("");
 	const [baseBranch, setBaseBranch] = useState("staging");
+	const [productionBranch, setProductionBranch] = useState("main");
+	const [productionUrl, setProductionUrl] = useState("");
+	const [stagingUrl, setStagingUrl] = useState("");
 	const [ghToken, setGhToken] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
@@ -181,6 +184,9 @@ function NewProjectDialog({
 			const p = await orpcFetch.yantra.createProject({
 				repo: repo.trim(),
 				baseBranch: baseBranch.trim(),
+				productionBranch: productionBranch.trim(),
+				productionUrl: productionUrl.trim(),
+				stagingUrl: stagingUrl.trim(),
 				ghToken: ghToken.trim(),
 			});
 			setRepo("");
@@ -208,9 +214,31 @@ function NewProjectDialog({
 					/>
 					<TextField
 						size="small"
-						label="Base branch"
+						label="Production branch"
+						value={productionBranch}
+						onChange={(e) => setProductionBranch(e.target.value)}
+						helperText="Where verified work ships. Features branch from here."
+					/>
+					<TextField
+						size="small"
+						label="Production URL (optional)"
+						placeholder="https://app.example.com"
+						value={productionUrl}
+						onChange={(e) => setProductionUrl(e.target.value)}
+					/>
+					<TextField
+						size="small"
+						label="Staging branch"
 						value={baseBranch}
 						onChange={(e) => setBaseBranch(e.target.value)}
+						helperText="Every feature branch is checked here before promotion."
+					/>
+					<TextField
+						size="small"
+						label="Staging URL (optional)"
+						placeholder="https://staging.example.com"
+						value={stagingUrl}
+						onChange={(e) => setStagingUrl(e.target.value)}
 					/>
 					<TextField
 						size="small"
