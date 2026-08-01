@@ -1,8 +1,18 @@
 name: CI
 
-# Minimal Phase-0 CI (Y0.4). These two jobs are the required checks behind
-# branch protection on main — the Grade gate's CI leg (loop-protocol.md §2.4).
-# Playwright E2E, coverage gates, knip = Phase 1 (Y1.A).
+# Three jobs, deliberately. Previously five: a separate `tests` job ran the same
+# vitest suite as `coverage` (test:run vs test:run --coverage) on its own runner
+# with its own Postgres, and `knip` paid a full checkout+install to run a
+# 1-minute check that needs no database. Setup (checkout → install → build)
+# dominated the bill — roughly 7 of ~15 runner-minutes went on getting ready
+# rather than testing.
+#
+# `coverage` is now the single unit-test gate: identical suite, plus the ratchet
+# in apps/backend/coverage.thresholds.json.
+#
+# NOTE: branch protection's required checks must NOT list `tests` — that job no
+# longer exists, and a required check that never reports blocks every PR
+# forever. Required set is {checks, coverage}; `e2e` stays advisory (issue #7).
 
 on:
   pull_request:
@@ -14,6 +24,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Build + lint + types + dead-code. No database needed, so knip rides along
+  # here instead of paying for its own runner: `yarn build` already produces the
+  # zod-schemas dist that knip needs to resolve vite.config.ts.
   checks:
     name: checks
     runs-on: ubuntu-latest
@@ -30,56 +43,10 @@ jobs:
       - run: yarn build
       - run: yarn lint
       - run: yarn check-types
-
-  knip:
-    name: knip
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-      - run: yarn install --frozen-lockfile
-      # knip loads apps/frontend/vite.config.ts, which resolves through
-      # @connected-repo/zod-schemas' package exports to dist/ — build it first
-      # (same reason as the tests job).
-      - run: yarn workspace @connected-repo/zod-schemas run build
       - run: yarn knip
 
-  tests:
-    name: tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          # Matches apps/backend/.env.test so `yarn db drop` always has a target.
-          POSTGRES_DB: connected_repo_orpc_db_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-      - run: yarn install --frozen-lockfile
-      # Backend runs from TS via tsx, but @connected-repo/zod-schemas resolves
-      # through its package exports to dist/ — build it in this job too.
-      - run: yarn workspace @connected-repo/zod-schemas run build
-      - run: yarn test:db:setup
-      - run: yarn test:run
-
+  # The unit-test gate. Runs the whole vitest suite AND enforces the coverage
+  # ratchet, so it subsumes the old `tests` job entirely.
   coverage:
     name: coverage
     runs-on: ubuntu-latest
@@ -106,6 +73,8 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --frozen-lockfile
+      # Backend runs from TS via tsx, but @connected-repo/zod-schemas resolves
+      # through its package exports to dist/ — build it first.
       - run: yarn workspace @connected-repo/zod-schemas run build
       - run: yarn test:db:setup
       # Fails when coverage drops below the committed ratchet baseline in
@@ -113,7 +82,7 @@ jobs:
       - run: yarn test:coverage
 
   # Playwright E2E (Y1.A / issue #5). NOT yet a required check — branch
-  # protection stays {checks, tests, coverage} until #7 promotes this.
+  # protection stays {checks, coverage} until #7 promotes this.
   e2e:
     name: e2e
     runs-on: ubuntu-latest
@@ -143,7 +112,7 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       # Backend + the frontend test build resolve @connected-repo/zod-schemas
-      # through its package exports to dist/ — build it first (as the tests job does).
+      # through its package exports to dist/ — build it first.
       - run: yarn workspace @connected-repo/zod-schemas run build
       # Frontend test-mode build + Playwright both read env from apps/frontend/.env.test
       # (Vite loadEnv and playwright.config.ts's dotenv). Turbo runs in strict env mode,
@@ -158,15 +127,27 @@ jobs:
           VITE_USER_APP_URL=http://localhost:5174
           VITE_TEST_PASSWORD=SecureTestPassword123!@#
           EOF
-      # Provision the test DB (drop → create → migrate → seed) — same step the tests job uses.
+      # Provision the test DB (drop → create → migrate → seed).
       - run: yarn test:db:setup
       # test:e2e boots the backend via `test:server:start` (node dist/server.js), so the
       # backend must be built in test mode first. Turbo's test:e2e task graph only builds
       # the frontend, not the backend, so build it explicitly here.
       - run: yarn workspace @connected-repo/backend run test:build
-      # Only Chromium is needed: the CI Playwright projects (Desktop Chrome + auth-test)
-      # both use Chromium; mobile projects are gated off in CI (see playwright.config.ts).
+      # Chromium costs ~40 s to download on every run; cache it keyed on the
+      # resolved Playwright version so only a version bump pays that. The system
+      # deps from --with-deps are already present on ubuntu-latest images, so
+      # restoring the browser bundle alone is sufficient.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         working-directory: apps/frontend
         run: yarn playwright install --with-deps chromium
       # Builds the frontend in test mode, then Playwright boots the backend test server
