@@ -17,7 +17,7 @@ import {
 	Switch,
 	TextField,
 } from "@mui/material";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /**
  * Yantra project pane (P3) — the main content next to the shell sidebar. Shows
@@ -135,6 +135,44 @@ function ChatPane({ project }: { project: YantraProject }) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// The thread is persisted (#26), so a refresh — or a teammate opening the
+	// same project — sees the whole conversation instead of an empty pane.
+	useEffect(() => {
+		let cancelled = false;
+		orpcFetch.yantra
+			.listMessages({ projectId: project.id })
+			.then((rows) => {
+				if (cancelled) return;
+				setMessages(
+					rows.map((r) => {
+						if (r.role === "draft") {
+							return {
+								id: nextMsgId(),
+								role: "draft" as const,
+								draft: r.payload as Draft,
+							};
+						}
+						if (r.role === "queued") {
+							const p = (r.payload ?? {}) as { issue?: number; url?: string };
+							return {
+								id: nextMsgId(),
+								role: "queued" as const,
+								issue: p.issue ?? 0,
+								url: p.url ?? "",
+							};
+						}
+						return { id: nextMsgId(), role: "user" as const, text: r.text };
+					}),
+				);
+			})
+			.catch(() => {
+				// An unreadable thread shouldn't block composing a new message.
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [project.id]);
+
 	const send = useCallback(async () => {
 		const idea = input.trim();
 		if (idea.length < 4) return;
@@ -143,14 +181,17 @@ function ChatPane({ project }: { project: YantraProject }) {
 		setMessages((m) => [...m, { id: nextMsgId(), role: "user", text: idea }]);
 		setBusy(true);
 		try {
-			const draft = await orpcFetch.yantra.groom({ idea });
+			const { draft } = await orpcFetch.yantra.sendMessage({
+				projectId: project.id,
+				idea,
+			});
 			setMessages((m) => [...m, { id: nextMsgId(), role: "draft", draft }]);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Couldn't draft a spec");
 		} finally {
 			setBusy(false);
 		}
-	}, [input]);
+	}, [input, project.id]);
 
 	const queue = useCallback(
 		async (draft: Draft) => {
