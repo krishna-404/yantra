@@ -46,7 +46,7 @@ const nextMsgId = (): number => {
 
 export default function YantraChatPage() {
 	const { projects, selectedId, loading, reload } = useProjects();
-	const [tab, setTab] = useState<"chat" | "settings">("chat");
+	const [tab, setTab] = useState<"chat" | "monitor" | "settings">("chat");
 	const selected = projects.find((p) => p.id === selectedId) ?? null;
 
 	if (loading && projects.length === 0) {
@@ -99,7 +99,7 @@ export default function YantraChatPage() {
 						bgcolor: "action.hover",
 					}}
 				>
-					{(["chat", "settings"] as const).map((t) => (
+					{(["chat", "monitor", "settings"] as const).map((t) => (
 						<Button
 							key={t}
 							size="small"
@@ -112,16 +112,18 @@ export default function YantraChatPage() {
 								color: tab === t ? undefined : "text.secondary",
 							}}
 						>
-							{t === "chat" ? "Chat" : "Settings"}
+							{t === "chat" ? "Chat" : t === "monitor" ? "Monitor" : "Settings"}
 						</Button>
 					))}
 				</Box>
 			</Stack>
 
 			<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-				{tab === "chat" ? (
-					<ChatPane key={selected.id} project={selected} />
-				) : (
+				{tab === "chat" && <ChatPane key={selected.id} project={selected} />}
+				{tab === "monitor" && (
+					<MonitorPane key={selected.id} project={selected} />
+				)}
+				{tab === "settings" && (
 					<SettingsPane key={selected.id} project={selected} onSaved={reload} />
 				)}
 			</Box>
@@ -318,6 +320,187 @@ function ChatPane({ project }: { project: YantraProject }) {
 				</Button>
 			</Box>
 		</Box>
+	);
+}
+
+
+/**
+ * Live monitor (#27): what the factory is doing on this project right now —
+ * queue depth, open PRs (with the promote button when auto-promote is off) and
+ * the recent run feed. Polls while the tab is open.
+ */
+function MonitorPane({ project }: { project: YantraProject }) {
+	const [status, setStatus] = useState<{
+		runs: {
+			run: string;
+			issue: number;
+			role: string;
+			tier: string;
+			outcome: string;
+			pr: number;
+			merged: boolean;
+			autoMerged: boolean;
+			wallS: number;
+			startedAt: number;
+		}[];
+		openPrs: {
+			number: number;
+			title: string;
+			url: string;
+			tier: string;
+			draft: boolean;
+		}[];
+		readyCount: number;
+		workingCount: number;
+	} | null>(null);
+	const [busy, setBusy] = useState<number | null>(null);
+	const [msg, setMsg] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		try {
+			setStatus(await orpcFetch.yantra.projectStatus({ projectId: project.id }));
+		} catch {
+			// Transient GitHub/API failures shouldn't blank the pane.
+		}
+	}, [project.id]);
+
+	useEffect(() => {
+		void load();
+		const t = window.setInterval(() => void load(), 30_000);
+		return () => window.clearInterval(t);
+	}, [load]);
+
+	const promote = async (pr: number) => {
+		setBusy(pr);
+		setMsg(null);
+		try {
+			const res = await orpcFetch.yantra.promotePr({
+				projectId: project.id,
+				pr,
+			});
+			setMsg(res.message);
+			if (res.merged) await load();
+		} catch (e) {
+			setMsg(e instanceof Error ? e.message : "Merge failed");
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	if (!status) {
+		return (
+			<Stack alignItems="center" justifyContent="center" sx={{ height: "100%" }}>
+				<CircularProgress size={22} />
+			</Stack>
+		);
+	}
+
+	return (
+		<Box sx={{ overflowY: "auto", px: { xs: 2, md: 3 }, py: 2 }}>
+			<Stack spacing={2} sx={{ maxWidth: 820 }}>
+				<Stack direction="row" spacing={2}>
+					<Stat label="Queued" value={status.readyCount} />
+					<Stat label="In flight" value={status.workingCount} />
+					<Stat label="Open PRs" value={status.openPrs.length} />
+				</Stack>
+
+				<Card sx={{ p: 2 }}>
+					<Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+						Open pull requests
+					</Typography>
+					{status.openPrs.length === 0 && (
+						<Typography variant="body2" sx={{ color: "text.secondary" }}>
+							Nothing open.
+						</Typography>
+					)}
+					<Stack spacing={1}>
+						{status.openPrs.map((pr) => (
+							<Stack
+								key={pr.number}
+								direction="row"
+								spacing={1}
+								alignItems="center"
+							>
+								<Box sx={{ flex: 1, minWidth: 0 }}>
+									<Typography variant="body2" noWrap>
+										<a href={pr.url} target="_blank" rel="noreferrer">
+											#{pr.number}
+										</a>{" "}
+										{pr.title}
+									</Typography>
+									<Typography variant="caption" sx={{ color: "text.secondary" }}>
+										{pr.tier || "untiered"}
+										{pr.draft ? " · draft" : ""}
+									</Typography>
+								</Box>
+								<Button
+									size="small"
+									variant="outlined"
+									disabled={busy === pr.number}
+									onClick={() => void promote(pr.number)}
+								>
+									{busy === pr.number ? "Merging…" : "Promote"}
+								</Button>
+							</Stack>
+						))}
+					</Stack>
+					{msg && (
+						<Alert severity="info" sx={{ mt: 1.5 }}>
+							{msg}
+						</Alert>
+					)}
+				</Card>
+
+				<Card sx={{ p: 2 }}>
+					<Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+						Recent runs
+					</Typography>
+					{status.runs.length === 0 && (
+						<Typography variant="body2" sx={{ color: "text.secondary" }}>
+							No runs recorded yet.
+						</Typography>
+					)}
+					<Stack spacing={0.75}>
+						{status.runs.map((r) => (
+							<Stack
+								key={r.run}
+								direction="row"
+								spacing={1}
+								alignItems="baseline"
+							>
+								<Typography variant="caption" sx={{ color: "text.secondary", minWidth: 128 }}>
+									{new Date(r.startedAt).toLocaleString()}
+								</Typography>
+								<Typography variant="body2" sx={{ minWidth: 64 }}>
+									{r.role}
+								</Typography>
+								<Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
+									{r.issue ? `#${r.issue} ` : ""}
+									{r.outcome}
+									{r.autoMerged ? " ⚡" : r.merged ? " ✅" : ""}
+								</Typography>
+								<Typography variant="caption" sx={{ color: "text.secondary" }}>
+									{r.wallS ? `${Math.round(r.wallS / 60)}m` : ""}
+								</Typography>
+							</Stack>
+						))}
+					</Stack>
+				</Card>
+			</Stack>
+		</Box>
+	);
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+	return (
+		<Card sx={{ p: 2, flex: 1 }}>
+			<Typography variant="h5" sx={{ fontWeight: 700 }}>
+				{value}
+			</Typography>
+			<Typography variant="caption" sx={{ color: "text.secondary" }}>
+				{label}
+			</Typography>
+		</Card>
 	);
 }
 
