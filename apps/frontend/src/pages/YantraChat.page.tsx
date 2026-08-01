@@ -85,8 +85,9 @@ export default function YantraChatPage() {
 						{selected.repo}
 					</Typography>
 					<Typography variant="caption" sx={{ color: "text.secondary" }}>
-						{selected.baseBranch} · {selected.mode}
-						{selected.autoMergeToMain ? " · auto-merge" : ""}
+						{selected.productionBranch || "main"} ← {selected.baseBranch} ·{" "}
+						{selected.mode}
+						{selected.autoMergeToMain ? " · auto-promote" : ""}
 					</Typography>
 				</Box>
 				<Box
@@ -287,6 +288,9 @@ function SettingsPane({
 	onSaved: () => Promise<void>;
 }) {
 	const [baseBranch, setBaseBranch] = useState(project.baseBranch);
+	const [productionBranch, setProductionBranch] = useState(project.productionBranch);
+	const [productionUrl, setProductionUrl] = useState(project.productionUrl);
+	const [stagingUrl, setStagingUrl] = useState(project.stagingUrl);
 	const [mode, setMode] = useState(project.mode);
 	const [enabled, setEnabled] = useState(project.enabled);
 	const [autoMerge, setAutoMerge] = useState(project.autoMergeToMain);
@@ -303,6 +307,9 @@ function SettingsPane({
 			await orpcFetch.yantra.updateProject({
 				id: project.id,
 				baseBranch: baseBranch.trim(),
+				productionBranch: productionBranch.trim(),
+				productionUrl: productionUrl.trim(),
+				stagingUrl: stagingUrl.trim(),
 				mode: mode as "shadow" | "live",
 				enabled,
 				autoMergeToMain: autoMerge,
@@ -328,12 +335,43 @@ function SettingsPane({
 			<Card sx={{ p: 2.5, maxWidth: 560 }}>
 				<Stack spacing={2}>
 					<TextField size="small" label="Repository" value={project.repo} disabled />
+					<Typography variant="overline" sx={{ color: "text.secondary" }}>
+						Production
+					</Typography>
 					<TextField
 						size="small"
-						label="Base branch"
+						label="Production branch"
+						value={productionBranch}
+						onChange={(e) => setProductionBranch(e.target.value)}
+						helperText="Where verified work ships. Feature branches are cut from here and PRs target it."
+					/>
+					<TextField
+						size="small"
+						label="Production URL"
+						placeholder="https://yantra.c4elabs.com"
+						value={productionUrl}
+						onChange={(e) => setProductionUrl(e.target.value)}
+					/>
+
+					<Typography variant="overline" sx={{ color: "text.secondary" }}>
+						Staging
+					</Typography>
+					<TextField
+						size="small"
+						label="Staging branch"
 						value={baseBranch}
 						onChange={(e) => setBaseBranch(e.target.value)}
+						helperText="Every feature branch is force-pushed here to be checked before promotion."
 					/>
+					<TextField
+						size="small"
+						label="Staging URL"
+						placeholder="https://yantra-staging.c4elabs.com"
+						value={stagingUrl}
+						onChange={(e) => setStagingUrl(e.target.value)}
+					/>
+
+					<Divider />
 					<TextField
 						select
 						size="small"
@@ -347,7 +385,7 @@ function SettingsPane({
 					</TextField>
 					<FormControlLabel
 						control={<Switch checked={autoMerge} onChange={(e) => setAutoMerge(e.target.checked)} />}
-						label="Auto-merge passing PRs to main (prod)"
+						label="Auto-promote staging → production (unattended)"
 					/>
 					<FormControlLabel
 						control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}

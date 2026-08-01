@@ -28,12 +28,29 @@ const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 const projectZod = z.object({
 	id: z.string(),
 	repo: z.string(),
+	// baseBranch === the staging branch (see the table docs).
 	baseBranch: z.string(),
+	productionBranch: z.string(),
+	productionUrl: z.string(),
+	stagingUrl: z.string(),
 	mode: z.string(),
 	enabled: z.boolean(),
 	ghTokenHint: z.string(),
 	autoMergeToMain: z.boolean(),
 });
+
+const PROJECT_COLUMNS = [
+	"id",
+	"repo",
+	"baseBranch",
+	"productionBranch",
+	"productionUrl",
+	"stagingUrl",
+	"mode",
+	"enabled",
+	"ghTokenHint",
+	"autoMergeToMain",
+] as const;
 
 const listProjects = rpcProtectedProcedure
 	.route({ method: "GET", tags: ["Yantra"] })
@@ -41,15 +58,7 @@ const listProjects = rpcProtectedProcedure
 	.handler(async () => {
 		return db.yantraProjects
 			.order({ createdAt: "ASC" })
-			.select(
-				"id",
-				"repo",
-				"baseBranch",
-				"mode",
-				"enabled",
-				"ghTokenHint",
-				"autoMergeToMain",
-			);
+			.select(...PROJECT_COLUMNS);
 	});
 
 const createProject = rpcProtectedActiveTeamProcedure
@@ -61,7 +70,11 @@ const createProject = rpcProtectedActiveTeamProcedure
 				.min(3)
 				.max(255)
 				.regex(REPO_RE, "must look like owner/name"),
+			// The staging branch — where every feature branch is checked.
 			baseBranch: z.string().min(1).max(255),
+			productionBranch: z.string().min(1).max(255).default("main"),
+			productionUrl: z.string().max(500).default(""),
+			stagingUrl: z.string().max(500).default(""),
 			ghToken: z.string().min(20).max(500),
 		}),
 	)
@@ -73,19 +86,14 @@ const createProject = rpcProtectedActiveTeamProcedure
 				teamId: context.user.activeTeamAppId,
 				repo: input.repo.trim(),
 				baseBranch: input.baseBranch.trim(),
+				productionBranch: input.productionBranch.trim(),
+				productionUrl: input.productionUrl.trim(),
+				stagingUrl: input.stagingUrl.trim(),
 				ghTokenCiphertext: sealSecret(token),
 				ghTokenHint: token.slice(-4),
 				enabled: true,
 			})
-			.select(
-				"id",
-				"repo",
-				"baseBranch",
-				"mode",
-				"enabled",
-				"ghTokenHint",
-				"autoMergeToMain",
-			);
+			.select(...PROJECT_COLUMNS);
 	});
 
 const updateProject = rpcProtectedActiveTeamProcedure
@@ -94,6 +102,9 @@ const updateProject = rpcProtectedActiveTeamProcedure
 		z.object({
 			id: z.string().min(1),
 			baseBranch: z.string().min(1).max(255).optional(),
+			productionBranch: z.string().min(1).max(255).optional(),
+			productionUrl: z.string().max(500).optional(),
+			stagingUrl: z.string().max(500).optional(),
 			mode: z.enum(["shadow", "live"]).optional(),
 			enabled: z.boolean().optional(),
 			autoMergeToMain: z.boolean().optional(),

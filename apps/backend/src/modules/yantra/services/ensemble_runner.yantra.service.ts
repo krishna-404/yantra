@@ -219,6 +219,8 @@ interface CandResult {
 export const runEnsembleExecute = async (input: {
 	repo: string;
 	baseBranch: string;
+	/** Promotion target — work branches from here and PRs target it (#24). */
+	productionBranch?: string;
 	ghToken: string;
 	/** Provider API keys to expose in the container (NVIDIA_API_KEY, GROQ_API_KEY,
 	 * …) — opencode.json reads them via {env:…}. Only set keys are passed. */
@@ -264,7 +266,9 @@ export const runEnsembleExecute = async (input: {
 
 	const baseEnv = {
 		PROMPT_B64: promptB64,
-		BASE_BRANCH: input.baseBranch,
+		// #24: branch from / PR into the PRODUCTION branch — staging is a
+		// disposable force-pushed preview, never a merge base.
+		BASE_BRANCH: input.productionBranch || input.baseBranch,
 		YANTRA_REPO: input.repo,
 		GH_TOKEN: input.ghToken,
 		...input.providerKeys,

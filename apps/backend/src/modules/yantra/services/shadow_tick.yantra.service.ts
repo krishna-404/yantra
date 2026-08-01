@@ -293,7 +293,14 @@ const hasLiveUnreleasedClaim = async (
 };
 
 const actOnLiveDecision = async (
-	project: { id: string; repo: string; baseBranch: string; ghToken: string },
+	project: {
+		id: string;
+		repo: string;
+		baseBranch: string;
+		/** Promotion target — work branches from here and PRs target it (#24). */
+		productionBranch?: string;
+		ghToken: string;
+	},
 	decision: ShadowDecision,
 ): Promise<string> => {
 	const { repo, ghToken } = project;
@@ -357,6 +364,7 @@ export const runShadowTick = async (): Promise<ProjectShadowResult[]> => {
 					void runGradeScan({
 						repo: project.repo,
 						baseBranch: project.baseBranch,
+						autoMergeToMain: project.autoMergeToMain,
 						ghToken: project.ghToken,
 						claudeToken,
 					}).catch((err) =>

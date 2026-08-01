@@ -29,7 +29,16 @@ export class YantraProjectTable extends BaseTable {
 				})
 				.nullable(),
 			repo: t.string(255),
+			// The STAGING branch — every feature branch is force-pushed here and
+			// checked on stagingUrl before promotion. (Named baseBranch for history:
+			// the execute/grade/tick services thread it as the branch work is based
+			// on; #24 widened the model rather than renaming it.)
 			baseBranch: t.string(255).default("staging"),
+			// The promotion target — where verified work ships (prod).
+			productionBranch: t.string(255).default("main"),
+			// Where each environment is served, so deploys can be health-checked.
+			productionUrl: t.string(500).default(""),
+			stagingUrl: t.string(500).default(""),
 			ghTokenCiphertext: t.text(),
 			// Last 4 chars of the PAT, for "ghp_…abcd" hints in the UI.
 			ghTokenHint: t.string(4).default(""),

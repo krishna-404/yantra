@@ -5,10 +5,7 @@ import {
 	gh,
 	ghRequest,
 } from "@backend/modules/yantra/services/gh_client.yantra.service";
-import {
-	fetchRepoFile,
-	parsePromptVersion,
-} from "@backend/modules/yantra/services/repo_files.yantra.service";
+import { fetchRepoFile } from "@backend/modules/yantra/services/repo_files.yantra.service";
 import {
 	addIssueLabels,
 	commentOnIssue,
@@ -38,7 +35,14 @@ const API = "https://api.github.com";
 
 export interface GradeProject {
 	repo: string;
+	/** The staging branch — where prompts/rubrics are read from. */
 	baseBranch: string;
+	/**
+	 * Per-project autonomy (#24): may yantra merge a passing PR to the
+	 * production branch itself? Undefined is treated as false — a project must
+	 * opt IN before anything ships to prod unattended.
+	 */
+	autoMergeToMain?: boolean;
 	ghToken: string;
 	claudeToken: string;
 }
@@ -380,7 +384,26 @@ const gradeOne = async (project: GradeProject, prNumber: number) => {
 		// (AUTO_MERGE_TIERS) and state_machine.yantra.ts (isAutoMergeTier) — the
 		// "widen rails to T0+T1" change updated those two but missed THIS one, so
 		// every T1 PASS silently fell through to human review instead of merging.
-		if (tierConfirmed === "T0" || tierConfirmed === "T1") {
+		// Per-project autonomy (#24). PRs target the production branch, so an
+		// auto-merge here ships to PROD. A project only goes hands-off when its
+		// team opts in; default false ⇒ the PR waits for a human click in the
+		// yantra UI. Checked BEFORE the rails so an opted-out project never even
+		// reaches the merge path.
+		if (
+			(tierConfirmed === "T0" || tierConfirmed === "T1") &&
+			project.autoMergeToMain !== true
+		) {
+			await commentOnIssue(
+				repo,
+				prNumber,
+				`🤖 yantra grade PASS (${tierConfirmed}) — auto-promote is OFF for this project, so this PR is waiting for a human merge.`,
+				ghToken,
+			).catch(() => {});
+			logger.info(
+				{ pr: prNumber, tier: tierConfirmed },
+				"grade PASS — auto-promote disabled for project, awaiting human merge",
+			);
+		} else if (tierConfirmed === "T0" || tierConfirmed === "T1") {
 			// Gather rail inputs FRESH at merge time; checkRails is the only gate.
 			const files = await gh<{ filename: string }[]>(
 				`/repos/${repo}/pulls/${prNumber}/files?per_page=100`,
