@@ -17,7 +17,12 @@ import {
 export interface YantraProject {
 	id: string;
 	repo: string;
+	/** The staging branch — every feature branch is checked here first. */
 	baseBranch: string;
+	/** The promotion target: where verified work ships. */
+	productionBranch: string;
+	productionUrl: string;
+	stagingUrl: string;
 	mode: string;
 	enabled: boolean;
 	ghTokenHint: string;
