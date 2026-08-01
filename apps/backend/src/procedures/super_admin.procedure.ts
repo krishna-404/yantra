@@ -28,6 +28,23 @@ const superAdminPhones = parseList(
 );
 
 /**
+ * The allowlist check on its own, so routes that are *mostly* team-accessible
+ * can still reserve one action for an operator (e.g. writing installation-wide
+ * provider keys) without duplicating the env parsing.
+ */
+export const isSuperAdmin = (user: {
+	email?: string | null;
+	phoneNumber?: string | null;
+}): boolean => {
+	const email = user.email?.toLowerCase();
+	const phone = normalizePhone(user.phoneNumber ?? "");
+	return Boolean(
+		(email && superAdminEmails.has(email)) ||
+			(phone !== "" && superAdminPhones.has(phone)),
+	);
+};
+
+/**
  * Super-admin gate. Allows access only when the authenticated user's email
  * (case-insensitive) or phone number is listed in `SUPER_ADMIN_EMAILS` or
  * `SUPER_ADMIN_PHONE_NUMBERS` env vars. Both are comma-separated.
@@ -43,14 +60,7 @@ const superAdminPhones = parseList(
  */
 export const rpcSuperAdminProcedure = rpcProtectedProcedure
 	.use(({ context, next }) => {
-		const email = context.user.email?.toLowerCase();
-		const phone = normalizePhone(context.user.phoneNumber ?? "");
-
-		const allowed =
-			(email && superAdminEmails.has(email)) ||
-			(phone !== "" && superAdminPhones.has(phone));
-
-		if (!allowed) {
+		if (!isSuperAdmin(context.user)) {
 			throw new ORPCError("FORBIDDEN", {
 				status: 403,
 				message: "Super-admin access required",

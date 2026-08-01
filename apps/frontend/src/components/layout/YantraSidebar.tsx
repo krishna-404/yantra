@@ -3,6 +3,7 @@ import { Typography } from "@connected-repo/ui-mui/data-display/Typography";
 import { Box } from "@connected-repo/ui-mui/layout/Box";
 import { Stack } from "@connected-repo/ui-mui/layout/Stack";
 import { NovuInbox } from "@frontend/components/notifications/NovuInbox";
+import { ProviderKeysDialog } from "@frontend/components/yantra/ProviderKeysDialog";
 import { useSessionInfo } from "@frontend/contexts/UserContext";
 import { useWorkspace } from "@frontend/contexts/WorkspaceContext";
 import { useProjects } from "@frontend/contexts/YantraProjectsContext";
@@ -29,6 +30,7 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 	const session = useSessionInfo();
 	const user = session.user;
 	const [adding, setAdding] = useState(false);
+	const [editingKeys, setEditingKeys] = useState(false);
 
 	return (
 		<Stack sx={{ height: "100%", bgcolor: "background.paper" }}>
@@ -113,6 +115,24 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 				</Stack>
 			</Box>
 
+			{/* Provider keys — the credentials every run depends on. */}
+			<Box sx={{ px: 2, pb: 1 }}>
+				<Button
+					fullWidth
+					variant="text"
+					onClick={() => setEditingKeys(true)}
+					sx={{
+						justifyContent: "flex-start",
+						textTransform: "none",
+						borderRadius: 2,
+						color: "text.secondary",
+						py: 0.75,
+					}}
+				>
+					Provider keys
+				</Button>
+			</Box>
+
 			{/* User / team */}
 			<Box sx={{ borderTop: "1px solid", borderColor: "divider", p: 1.5 }}>
 				<UserProfileMenu
@@ -144,6 +164,11 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 					}
 				/>
 			</Box>
+
+			<ProviderKeysDialog
+				open={editingKeys}
+				onClose={() => setEditingKeys(false)}
+			/>
 
 			<NewProjectDialog
 				open={adding}
