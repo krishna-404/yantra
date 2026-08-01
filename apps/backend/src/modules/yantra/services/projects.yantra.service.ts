@@ -106,18 +106,30 @@ export const listEnabledProjectsWithTokens = async (): Promise<
 		id: string;
 		repo: string;
 		baseBranch: string;
+		productionBranch: string;
+		autoMergeToMain: boolean;
 		mode: string;
 		ghToken: string;
 	}[]
 > => {
 	const rows = await db.yantraProjects
 		.where({ enabled: true })
-		.select("id", "repo", "baseBranch", "mode", "ghTokenCiphertext")
+		.select(
+			"id",
+			"repo",
+			"baseBranch",
+			"productionBranch",
+			"autoMergeToMain",
+			"mode",
+			"ghTokenCiphertext",
+		)
 		.order({ createdAt: "ASC" });
 	return rows.map((r) => ({
 		id: r.id,
 		repo: r.repo,
 		baseBranch: r.baseBranch,
+		productionBranch: r.productionBranch,
+		autoMergeToMain: r.autoMergeToMain,
 		mode: r.mode,
 		ghToken: openSecret(r.ghTokenCiphertext),
 	}));

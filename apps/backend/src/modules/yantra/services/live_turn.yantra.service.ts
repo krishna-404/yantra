@@ -77,7 +77,10 @@ export const runLiveTurn = async (input: {
 		return;
 	}
 	const ghToken = openSecret(project.ghTokenCiphertext);
-	const { repo, baseBranch } = project;
+	// baseBranch = the staging branch (prompts/rubrics are read from it).
+	// productionBranch = where work branches FROM and PRs target (#24) — staging
+	// is a disposable force-pushed preview, so it must never be the merge base.
+	const { repo, baseBranch, productionBranch } = project;
 
 	const claudeToken = await getAppSecretValue("CLAUDE_CODE_OAUTH_TOKEN");
 	if (!claudeToken) {
@@ -133,6 +136,7 @@ export const runLiveTurn = async (input: {
 		await runEnsembleExecute({
 			repo,
 			baseBranch,
+			productionBranch,
 			ghToken,
 			providerKeys,
 			models,
@@ -149,6 +153,7 @@ export const runLiveTurn = async (input: {
 	await runExecute({
 		repo,
 		baseBranch,
+		productionBranch,
 		ghToken,
 		claudeToken,
 		issue: input.issue,

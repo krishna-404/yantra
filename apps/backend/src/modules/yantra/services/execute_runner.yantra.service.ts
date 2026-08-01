@@ -99,6 +99,8 @@ su node -p -s /bin/bash -c 'export HOME=/home/node; bash /workspace/work.sh'
 export const runExecute = async (project: {
 	repo: string;
 	baseBranch: string;
+	/** The promotion target — work branches from here and PRs target it (#24). */
+	productionBranch?: string;
 	ghToken: string;
 	claudeToken: string;
 	issue: number;
@@ -159,7 +161,13 @@ export const runExecute = async (project: {
 					BRANCH: branch,
 					ISSUE: String(project.issue),
 					TIER: project.tier,
-					BASE_BRANCH: project.baseBranch,
+					// #24: work branches from — and PRs target — the PRODUCTION
+					// branch. `staging` is a disposable preview slot that gets
+					// force-pushed per feature, so basing work there meant building
+					// on code that could vanish and opening PRs into a branch that
+					// gets overwritten. Falls back to baseBranch for rows predating
+					// the productionBranch column.
+					BASE_BRANCH: project.productionBranch || project.baseBranch,
 					TITLE_B64: Buffer.from(issue.title, "utf8").toString("base64"),
 					IS_RETRY: project.retry ? "1" : "0",
 					YANTRA_REPO: project.repo,
