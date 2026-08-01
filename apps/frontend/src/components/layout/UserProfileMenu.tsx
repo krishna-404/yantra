@@ -12,6 +12,7 @@ import { IconButton } from "@connected-repo/ui-mui/navigation/IconButton";
 import { Menu } from "@connected-repo/ui-mui/navigation/Menu";
 import { useThemeMode } from "@connected-repo/ui-mui/theme/ThemeContext";
 import type { SessionInfo } from "@frontend/contexts/UserContext";
+import { useWorkspace } from "@frontend/contexts/WorkspaceContext";
 import { signout } from "@frontend/utils/signout.utils";
 import { useState } from "react";
 import { useLoaderData, useNavigate } from "react-router";
@@ -39,6 +40,14 @@ export const UserProfileMenu = ({
 	// Theme toggle
 	const { mode, toggleTheme } = useThemeMode();
 	const isDarkMode = mode === "dark";
+
+	// Team switcher (teams switch here, per product model — no top navbar)
+	const { activeWorkspace, teams, setActiveTeam } = useWorkspace();
+
+	const switchTeam = async (teamAppId: string) => {
+		handleClose();
+		if (teamAppId !== activeWorkspace.id) await setActiveTeam(teamAppId);
+	};
 
 	const handleLogout = async () => {
 		handleClose();
@@ -95,7 +104,29 @@ export const UserProfileMenu = ({
 
 	return (
 		<>
-			{trigger || defaultTrigger}
+			{trigger ? (
+				<Box
+					component="button"
+					type="button"
+					onClick={handleOpen}
+					aria-label="User menu"
+					sx={{
+						display: "block",
+						width: "100%",
+						border: "none",
+						background: "none",
+						p: 0,
+						cursor: "pointer",
+						textAlign: "inherit",
+						font: "inherit",
+						color: "inherit",
+					}}
+				>
+					{trigger}
+				</Box>
+			) : (
+				defaultTrigger
+			)}
 
 			<Menu
 				anchorEl={anchorEl}
@@ -156,9 +187,45 @@ export const UserProfileMenu = ({
 				)}
 				{showUserInfo && user && <Divider />}
 
-				{/* Dashboard */}
+				{/* Team switcher — only meaningful with more than one team */}
+				{teams.length > 1 && (
+					<Box sx={{ px: 2, pt: 1 }}>
+						<Typography variant="overline" color="text.secondary">
+							Teams
+						</Typography>
+					</Box>
+				)}
+				{teams.length > 1 &&
+					teams.map((t) => (
+						<MenuItem
+							key={t.id}
+							onClick={() => void switchTeam(t.id)}
+							sx={{ py: 1, gap: 1.5 }}
+						>
+							<Box
+								sx={{
+									width: 8,
+									height: 8,
+									borderRadius: "50%",
+									bgcolor: t.id === activeWorkspace.id ? "primary.main" : "transparent",
+									border: "1px solid",
+									borderColor: "divider",
+								}}
+							/>
+							<Typography
+								variant="body2"
+								noWrap
+								sx={{ fontWeight: t.id === activeWorkspace.id ? 700 : 400 }}
+							>
+								{t.name}
+							</Typography>
+						</MenuItem>
+					))}
+				{teams.length > 1 && <Divider />}
+
+				{/* Projects */}
 				<MenuItem
-					onClick={() => handleNavigation("/dashboard")}
+					onClick={() => handleNavigation("/projects")}
 					sx={{
 						py: 1.5,
 						gap: 1.5,
@@ -170,7 +237,7 @@ export const UserProfileMenu = ({
 					}}
 				>
 					<DashboardIcon fontSize="small" />
-					<Typography variant="body2">Dashboard</Typography>
+					<Typography variant="body2">Projects</Typography>
 				</MenuItem>
 
 				{/* Profile/Settings */}
