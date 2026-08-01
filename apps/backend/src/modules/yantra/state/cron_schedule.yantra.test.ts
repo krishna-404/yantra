@@ -82,7 +82,7 @@ describe("nextRunAt", () => {
 	});
 
 	it("returns null when nothing matches inside the horizon", () => {
-		// Feb 29 is years away from this date — beyond the 8-day scan, so the
+		// Feb 29 is years away from this date — beyond the one-year scan, so the
 		// caller falls back to a fixed delay instead of hanging the routine.
 		expect(nextRunAt("0 0 29 2 *", utc("2026-08-01T00:00:00"))).toBeNull();
 	});
