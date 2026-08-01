@@ -1,4 +1,7 @@
-import { ghRequest } from "@backend/modules/yantra/services/gh_client.yantra.service";
+import {
+	GH_TIMEOUT_MS,
+	ghRequest,
+} from "@backend/modules/yantra/services/gh_client.yantra.service";
 
 /**
  * Reads harness files (prompt templates, .brain/*) straight from the
@@ -33,6 +36,7 @@ export const fetchRepoFile = async (
 					accept: "application/vnd.github.raw+json",
 					"x-github-api-version": "2022-11-28",
 				},
+				signal: AbortSignal.timeout(GH_TIMEOUT_MS),
 			},
 		);
 		if (res.ok) text = await res.text();

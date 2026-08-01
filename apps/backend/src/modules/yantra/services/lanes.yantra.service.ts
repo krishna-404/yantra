@@ -27,6 +27,9 @@ export interface Lane {
 	auth: "bearer" | "query";
 }
 
+/** A provider health probe is diagnostic — it must fail fast, not hang. */
+const PROBE_TIMEOUT_MS = 10_000;
+
 export const LANES: Lane[] = [
 	{
 		id: "opencode",
@@ -115,6 +118,9 @@ export const runLaneSmoke = async (
 		const res = await fetch(url, {
 			headers:
 				lane.auth === "bearer" ? { authorization: `Bearer ${apiKey}` } : {},
+			// A health probe that never answers is a failed probe, not a reason
+			// to hang the lanes endpoint that reports it.
+			signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
 		});
 		const latencyMs = Date.now() - started;
 		if (!res.ok) {
