@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
  */
 
 describe("routeModel", () => {
-	it("mirrors ops/yantra/routing.json", () => {
+	it("mirrors the retired v0 routing.json table", () => {
 		expect(routeModel("advise")).toBe("opus");
 		expect(routeModel("grade")).toBe("opus");
 		expect(routeModel("execute.T0")).toBe("sonnet");

@@ -60,7 +60,7 @@ describe("checkRails (R1–R5)", () => {
 	it("R2: protected paths refuse — including auth/secret/env/migrations substrings", () => {
 		const cases = [
 			".github/workflows/ci.yml",
-			"ops/yantra/grade.sh",
+			"ops/yantra/prompts/grade.md",
 			"apps/yantra/x.ts",
 			"LICENSE",
 			"apps/backend/src/modules/auth/session.ts",
@@ -96,7 +96,7 @@ describe("checkRails (R1–R5)", () => {
 		expect(checkRails(big, { ...okCtx, isRevert: true })).toBeNull();
 		expect(
 			checkRails(
-				{ ...big, filePaths: ["ops/yantra/lib.sh"] },
+				{ ...big, filePaths: ["ops/yantra/Dockerfile"] },
 				{ ...okCtx, isRevert: true },
 			),
 		).toMatch(/^R2: touches protected path/);

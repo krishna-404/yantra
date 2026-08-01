@@ -1,68 +1,46 @@
-# ops/yantra — loop v0 (Phase 0 bootstrap harness)
+# ops/yantra — runtime assets for the factory
 
-Implements `docs/yantra/loop-protocol.md` in bash + `gh` + `jq` + `docker`.
-Retired in Phase 2 when `apps/yantra` passes the parity suite. Everything here is
-**T3** — the loop may never modify this directory (rail R2).
+The v0 shell loop that used to live here (`loop-tick.sh`, `advise.sh`,
+`execute.sh`, `grade.sh`, `canary.sh`, `dream-nightly.sh`, `notify.sh`,
+`lib.sh`, `setup-labels.sh`, `routing.json`, the systemd units and
+`vps-bootstrap.sh`) is **retired**. It ran on a VPS under systemd timers, kept
+its own clone of the repo, and opened PRs against a machine-level
+`YANTRA_BASE_BRANCH` env var — configuration that lived outside the product,
+drifted from it, and (once `staging` became a disposable preview branch) aimed
+its PRs at a branch that gets force-pushed.
 
-## Deploy (VPS)
+The factory now runs **inside the Yantra app**: tick, claim, advise, execute,
+grade and auto-merge are backend services, and per-project configuration —
+repo, staging/production branches and URLs, token, mode, auto-promote — lives in
+`yantra_projects`, set from the UI rather than from a shell on a box.
 
-The integration branch is `staging` (`YANTRA_BASE_BRANCH`, set in the env file):
-execute branches from it, PRs target it, canary watches its CI, branch protection
-+ required checks apply to it. `main` is production (Dokploy); humans promote
-staging → main when it's proven green.
+## What's still here, and why
 
-**Zero host-side runtime (D21):** the systemd units run the tick/dream inside the
-`yantra-exec` image (docker socket mounted, repo read-only, env read-only,
-telemetry writable); those orchestrators spawn the per-run execute/grade/dream
-containers as siblings. The host runs only systemd + docker; a runaway run can
-exhaust its own container's 4 GB/2 CPU cap, never the base server.
+Everything below is fetched **at runtime** by the in-app engine. Deleting any of
+it breaks the factory.
 
-```bash
-# one-time (after Y0.5's dirs/env/creds exist) — or just run vps-bootstrap.sh
-git clone -b staging git@github.com:<you>/yantra.git /opt/yantra/repo   # the clone IS the deployment
-docker build -t yantra-exec:0 /opt/yantra/repo/ops/yantra/
-YANTRA_REPO=<you>/yantra /opt/yantra/repo/ops/yantra/setup-labels.sh
-cp /opt/yantra/repo/ops/yantra/systemd/* /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now yantra-dream.timer
-systemctl start yantra-loop.timer          # ← the moment the factory goes live (Y0.8)
+| Path | Consumed by | Purpose |
+|---|---|---|
+| `prompts/advise.md` | `advise_runner` | ADVISE turn prompt (§3) |
+| `prompts/execute.md` | `execute_runner`, `ensemble_runner`, `free_lane_runner` | EXECUTE turn prompt |
+| `prompts/grade.md` | `grade_runner` | GRADE rubric prompt |
+| `prompts/dream-nightly.md` | DREAM (moving in-app) | nightly consolidation prompt |
+| `Dockerfile` | builds `yantra-exec:0` | the **default** runner image every turn container uses |
+| `oc/Dockerfile`, `oc/opencode.json` | `exec_image_builder` | builds `yantra-exec-oc:0` (opencode lane) |
 
-# update = git pull (nothing else)
-git -C /opt/yantra/repo pull
+The prompts are versioned documents the runners read from the repo at the
+project's branch, so editing one changes agent behaviour without a deploy.
+Prompt changes remain **T3** — the loop may never modify this directory (rail R2).
+
+`Dockerfile` has no in-app builder yet (only the `oc` variant does). If
+`yantra-exec:0` is ever pruned, rebuild it by hand:
+
+```sh
+docker build -t yantra-exec:0 ops/yantra
 ```
 
-`/opt/yantra/env/yantra.env` (chmod 600) needs: `YANTRA_REPO`, `GH_TOKEN`,
-`CLAUDE_CODE_OAUTH_TOKEN`, `NOVU_SECRET_KEY` (+ optional `YANTRA_NOVU_WORKFLOW`,
-`YANTRA_NOVU_SUBSCRIBER`, `YANTRA_SKILLS_REPO`).
+## Model routing
 
-## Y0.6 acceptance dry-run
-
-```bash
-# 1. Kill switch: set repo variable YANTRA_KILL=true, then
-./loop-tick.sh            # → exits 0, logs "killed", zero label changes on any issue
-
-# 2. Vague spec parks: file a fixture issue with a deliberately vague body, label it
-#    spec:ready, run ./loop-tick.sh → issue gains needs-human, Novu fires, claim released.
-
-# 3. Rails unit test (no network needed past the R2 check):
-source ./grade.sh --lib-only
-echo '{"additions":120,"deletions":40,"changedFiles":3,"files":[{"path":"README.md"}]}' \
-  | { read -r pj; rails_check "$pj" T0 PASS; }   # → "R2: diff 160 changed lines > 150", rc 1
-```
-
-## Files
-
-| File | Contract |
-|---|---|
-| `loop-tick.sh` | One tick: kill check → canary → reap → grade → claim → advise → execute → dream micro-write. Exit 0 always. |
-| `advise.sh` | Plan gate (`claude -p`, opus, host-side). PROCEED/AMBIGUOUS/REJECT + tier label. |
-| `execute.sh` | One containerized build run → one PR. Hard self-check gate before push. |
-| `grade.sh` | CI leg + rubric leg (opus container). Rails R1–R4 → squash auto-merge (T0 only). Retry orchestration. |
-| `canary.sh` | R5: red main CI after an auto-merge ⇒ revert PR + kill switch + Novu. |
-| `dream-nightly.sh` | 03:00 IST consolidation; ≤ 1 `.brain/` PR + ≤ 1 skills PR, always T3. |
-| `notify.sh` | Novu trigger wrapper (needs-human / review-digest / killed). Never wedges the loop. |
-| `setup-labels.sh` | Idempotent label creation (loop-protocol §1). |
-| `routing.json` | Static v0 role→model table (§4). Read fresh each turn. |
-| `prompts/*.md` | Versioned role prompts (§3). Changes are T3. |
-| `systemd/*` | `yantra-loop.timer` (10 min) · `yantra-dream.timer` (03:00 IST). |
-| `Dockerfile` | `yantra-exec` image (§7): node 22 + git + gh + jq + postgres + claude-code. |
+`routing.json` is gone. The role→model table is code now
+(`turn_shared.yantra.service.ts` → `ROUTING`), so it type-checks and is pinned by
+tests instead of living in a JSON file that nothing actually loaded at runtime.
