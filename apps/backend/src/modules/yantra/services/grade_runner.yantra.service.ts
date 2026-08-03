@@ -2,6 +2,7 @@ import { db } from "@backend/db/db";
 import { runYantraContainer } from "@backend/modules/yantra/services/container_runner.yantra.service";
 import { runExecute } from "@backend/modules/yantra/services/execute_runner.yantra.service";
 import {
+	GH_TIMEOUT_MS,
 	gh,
 	ghRequest,
 } from "@backend/modules/yantra/services/gh_client.yantra.service";
@@ -15,6 +16,7 @@ import {
 	routeModel,
 } from "@backend/modules/yantra/services/turn_shared.yantra.service";
 import { checkRails } from "@backend/modules/yantra/state/rails.yantra";
+import { ScanLatch } from "@backend/modules/yantra/state/scan_latch.yantra";
 import { logger } from "@backend/utils/logger.utils";
 import { ulid } from "ulid";
 
@@ -77,12 +79,15 @@ const rawDiff = async (
 	pr: number,
 	token: string,
 ): Promise<string> => {
+	// Bounded like every other GitHub call — this one runs while the scan latch
+	// is held, so a hung diff is exactly what stalls grading.
 	const res = await fetch(`${API}/repos/${repo}/pulls/${pr}`, {
 		headers: {
 			authorization: `Bearer ${token}`,
 			accept: "application/vnd.github.v3.diff",
 			"x-github-api-version": "2022-11-28",
 		},
+		signal: AbortSignal.timeout(GH_TIMEOUT_MS),
 	});
 	if (!res.ok) throw new Error(`GitHub ${res.status} diff for PR #${pr}`);
 	return (await res.text()).slice(0, 180_000);
@@ -121,14 +126,34 @@ const automergesLastHour = async (
 // One scan at a time per process — grades are slow (rubric container) and the
 // already-graded dedupe is comment-based, so concurrent scans could double-
 // grade the same SHA. v0 was serial by construction; we stay serial.
-let scanInFlight = false;
+//
+// Serial, but not indefinitely: a plain boolean latch is never cleared if the
+// scan that set it never returns, and grading then stops for the life of the
+// process while every tick logs a cheerful "skipped". The latch expires so a
+// wedged scan costs one window instead of everything after it.
+//
+// Ceiling = the grade container's own timeout (20 min) plus room for the CI
+// probe and rubric fetch around it, so a legitimately slow scan is never
+// mistaken for a dead one.
+const SCAN_WEDGE_MS = GRADE_TIMEOUT_MS + 10 * 60 * 1000;
+const scanLatch = new ScanLatch(SCAN_WEDGE_MS);
 
 export const runGradeScan = async (project: GradeProject): Promise<void> => {
-	if (scanInFlight) {
-		logger.info({ repo: project.repo }, "grade scan skipped: one in flight");
+	const held = scanLatch.acquire();
+	if (!held.acquired) {
+		logger.info(
+			{ repo: project.repo, heldForMs: held.heldForMs },
+			"grade scan skipped: one in flight",
+		);
 		return;
 	}
-	scanInFlight = true;
+	if (held.tookOverAfterMs !== null) {
+		// Loud on purpose: self-healing past this quietly would hide a real bug.
+		logger.error(
+			{ repo: project.repo, wedgedForMs: held.tookOverAfterMs },
+			"grade scan latch wedged — previous scan never finished, taking over",
+		);
+	}
 	try {
 		const prs = await gh<{ number: number }[]>(
 			`/repos/${project.repo}/issues?labels=agent:pr-open&state=open&per_page=50`,
@@ -149,7 +174,7 @@ export const runGradeScan = async (project: GradeProject): Promise<void> => {
 			}
 		}
 	} finally {
-		scanInFlight = false;
+		scanLatch.release(held.token);
 	}
 };
 

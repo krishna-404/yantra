@@ -26,6 +26,9 @@ export interface CompletionProvider {
 
 // OpenAI-compatible providers only (single request shape). Gemini's native API
 // differs; it joins once we need it here.
+/** Ceiling for one provider attempt; the next provider in the chain gets a turn. */
+const COMPLETION_TIMEOUT_MS = 120_000;
+
 export const COMPLETION_PROVIDERS: CompletionProvider[] = [
 	{
 		id: "groq",
@@ -88,6 +91,10 @@ export const freeComplete = async (input: {
 						{ role: "user", content: input.user },
 					],
 				}),
+				// Generous — these are real completions — but bounded. This runs
+				// inside chat's sendMessage and the routines sweep; an unbounded
+				// hang blocks a user's request or the whole sweep behind it.
+				signal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
 			});
 			if (!res.ok) {
 				firstErr ??= `${provider.id}: HTTP ${res.status}`;
