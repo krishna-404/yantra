@@ -1,5 +1,10 @@
 import { db } from "@backend/db/db";
 import {
+	APP_SECRET_KEYS,
+	listAppSecrets,
+	setAppSecret,
+} from "@backend/modules/yantra/services/app_secrets.yantra.service";
+import {
 	gh,
 	ghRequest,
 } from "@backend/modules/yantra/services/gh_client.yantra.service";
@@ -16,6 +21,8 @@ import {
 	rpcProtectedActiveTeamProcedure,
 	rpcProtectedProcedure,
 } from "@backend/procedures/protected.procedure";
+import { isSuperAdmin } from "@backend/procedures/super_admin.procedure";
+import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
 /**
@@ -493,6 +500,61 @@ const deleteRoutine = rpcProtectedActiveTeamProcedure
 		return { ok: true };
 	});
 
+/**
+ * Provider keys — the credentials the runners actually need to do work. These
+ * lived only in the deleted super-admin cockpit, which meant a fresh install had
+ * no in-app way to supply the Claude token it can't run without.
+ *
+ * They are installation-wide today, not per-team: `getAppSecretValue` is read by
+ * eleven runner call sites that have no team in scope, and scoping it properly
+ * is its own change (#138). Reads are open to any team member because they only
+ * ever return the last four characters; WRITES stay super-admin, so one team
+ * can't overwrite the key every other team is running on.
+ */
+const providerKeyZod = z.object({
+	key: z.string(),
+	valueHint: z.string(),
+	updatedAt: z.number(),
+});
+
+const listProviderKeys = rpcProtectedActiveTeamProcedure
+	.route({ method: "GET", tags: ["Yantra"] })
+	.input(z.object({}))
+	.output(
+		z.object({
+			keys: z.array(providerKeyZod),
+			// The closed set of keys the runners look for, so the UI can list the
+			// ones that are still missing rather than only the ones already stored.
+			known: z.array(z.enum(APP_SECRET_KEYS)),
+			canEdit: z.boolean(),
+		}),
+	)
+	.handler(async ({ context }) => ({
+		keys: await listAppSecrets(),
+		known: [...APP_SECRET_KEYS],
+		canEdit: isSuperAdmin(context.user),
+	}));
+
+const setProviderKey = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(
+		z.object({
+			key: z.enum(APP_SECRET_KEYS),
+			value: z.string().min(8),
+		}),
+	)
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input, context }) => {
+		if (!isSuperAdmin(context.user)) {
+			throw new ORPCError("FORBIDDEN", {
+				status: 403,
+				message: "Only an operator can change installation provider keys",
+			});
+		}
+		await setAppSecret(input.key, input.value);
+		return { ok: true };
+	});
+
 export const yantraUserAppRouter = {
 	listProjects,
 	projectStatus,
@@ -501,6 +563,8 @@ export const yantraUserAppRouter = {
 	createRoutine,
 	updateRoutine,
 	deleteRoutine,
+	listProviderKeys,
+	setProviderKey,
 	listMessages,
 	sendMessage,
 	createProject,
