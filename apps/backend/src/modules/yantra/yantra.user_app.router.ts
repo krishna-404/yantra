@@ -11,6 +11,7 @@ import {
 	createReadySpec,
 	groomIdea,
 } from "@backend/modules/yantra/services/spec_intake.yantra.service";
+import { isValidCron } from "@backend/modules/yantra/state/cron_schedule.yantra";
 import {
 	rpcProtectedActiveTeamProcedure,
 	rpcProtectedProcedure,
@@ -376,10 +377,130 @@ const promotePr = rpcProtectedActiveTeamProcedure
 		}
 	});
 
+/**
+ * Routines (#18) — user-configured schedules that keep a project fed, so it
+ * keeps shipping without anyone queueing work by hand.
+ */
+const routineZod = z.object({
+	id: z.string(),
+	projectId: z.string(),
+	name: z.string(),
+	cron: z.string().nullable(),
+	action: z.string(),
+	prompt: z.string(),
+	targetReady: z.number(),
+	enabled: z.boolean(),
+	lastRunAt: z.number().nullable(),
+	nextRunAt: z.number().nullable(),
+});
+
+const ROUTINE_COLUMNS = [
+	"id",
+	"projectId",
+	"name",
+	"cron",
+	"action",
+	"prompt",
+	"targetReady",
+	"enabled",
+	"lastRunAt",
+	"nextRunAt",
+] as const;
+
+const listRoutines = rpcProtectedActiveTeamProcedure
+	.route({ method: "GET", tags: ["Yantra"] })
+	.input(z.object({ projectId: z.string().min(1) }))
+	.output(z.array(routineZod))
+	.handler(async ({ input }) => {
+		return db.yantraRoutines
+			.where({ projectId: input.projectId })
+			.order({ createdAt: "ASC" })
+			.select(...ROUTINE_COLUMNS);
+	});
+
+const createRoutine = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(
+		z.object({
+			projectId: z.string().min(1),
+			name: z.string().min(1).max(200),
+			// 5-field UTC cron. Validated here so a typo surfaces in the form
+			// rather than silently never firing.
+			cron: z.string().min(1).max(100).refine(isValidCron, {
+				message: "must be a valid 5-field cron expression (UTC)",
+			}),
+			action: z.enum(["groom_backlog", "file_specs"]).default("groom_backlog"),
+			prompt: z.string().max(2000).default(""),
+			targetReady: z.number().int().min(1).max(20).default(3),
+		}),
+	)
+	.output(routineZod)
+	.handler(async ({ input, context }) => {
+		return db.yantraRoutines
+			.create({
+				teamId: context.user.activeTeamAppId,
+				projectId: input.projectId,
+				name: input.name.trim(),
+				cron: input.cron.trim(),
+				action: input.action,
+				prompt: input.prompt.trim(),
+				targetReady: input.targetReady,
+				enabled: true,
+				createdByUserId: context.user.id,
+				// Left null so the next sweep (≤5 min) runs it once immediately —
+				// creating a routine shouldn't mean waiting for its first cron
+				// boundary to find out whether it works.
+				nextRunAt: null,
+			})
+			.select(...ROUTINE_COLUMNS);
+	});
+
+const updateRoutine = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(
+		z.object({
+			id: z.string().min(1),
+			name: z.string().min(1).max(200).optional(),
+			cron: z
+				.string()
+				.min(1)
+				.max(100)
+				.refine(isValidCron, { message: "invalid cron expression" })
+				.optional(),
+			prompt: z.string().max(2000).optional(),
+			targetReady: z.number().int().min(1).max(20).optional(),
+			enabled: z.boolean().optional(),
+		}),
+	)
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		const { id, ...rest } = input;
+		const patch = Object.fromEntries(
+			Object.entries(rest).filter(([, v]) => v !== undefined),
+		);
+		if (Object.keys(patch).length > 0) {
+			await db.yantraRoutines.findBy({ id }).update(patch);
+		}
+		return { ok: true };
+	});
+
+const deleteRoutine = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(z.object({ id: z.string().min(1) }))
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input }) => {
+		await db.yantraRoutines.findBy({ id: input.id }).delete();
+		return { ok: true };
+	});
+
 export const yantraUserAppRouter = {
 	listProjects,
 	projectStatus,
 	promotePr,
+	listRoutines,
+	createRoutine,
+	updateRoutine,
+	deleteRoutine,
 	listMessages,
 	sendMessage,
 	createProject,

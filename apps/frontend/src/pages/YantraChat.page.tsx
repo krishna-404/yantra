@@ -44,9 +44,18 @@ const nextMsgId = (): number => {
 	return msgSeq;
 };
 
+const TABS = [
+	["chat", "Chat"],
+	["monitor", "Monitor"],
+	["routines", "Routines"],
+	["settings", "Settings"],
+] as const;
+
 export default function YantraChatPage() {
 	const { projects, selectedId, loading, reload } = useProjects();
-	const [tab, setTab] = useState<"chat" | "monitor" | "settings">("chat");
+	const [tab, setTab] = useState<
+		"chat" | "monitor" | "routines" | "settings"
+	>("chat");
 	const selected = projects.find((p) => p.id === selectedId) ?? null;
 
 	if (loading && projects.length === 0) {
@@ -78,9 +87,17 @@ export default function YantraChatPage() {
 				direction="row"
 				spacing={1}
 				alignItems="center"
-				sx={{ px: { xs: 2, md: 3 }, py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
+				useFlexGap
+				sx={{
+					px: { xs: 2, md: 3 },
+					py: 1.5,
+					borderBottom: "1px solid",
+					borderColor: "divider",
+					flexWrap: "wrap",
+					rowGap: 1,
+				}}
 			>
-				<Box sx={{ flex: 1, minWidth: 0 }}>
+				<Box sx={{ flex: "1 1 180px", minWidth: 0 }}>
 					<Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
 						{selected.repo}
 					</Typography>
@@ -97,9 +114,11 @@ export default function YantraChatPage() {
 						p: 0.5,
 						borderRadius: 2.5,
 						bgcolor: "action.hover",
+						maxWidth: "100%",
+						overflowX: "auto",
 					}}
 				>
-					{(["chat", "monitor", "settings"] as const).map((t) => (
+					{TABS.map(([t, label]) => (
 						<Button
 							key={t}
 							size="small"
@@ -108,11 +127,12 @@ export default function YantraChatPage() {
 							onClick={() => setTab(t)}
 							sx={{
 								borderRadius: 2,
-								minWidth: 82,
+								flexShrink: 0,
+								minWidth: { xs: 68, sm: 82 },
 								color: tab === t ? undefined : "text.secondary",
 							}}
 						>
-							{t === "chat" ? "Chat" : t === "monitor" ? "Monitor" : "Settings"}
+							{label}
 						</Button>
 					))}
 				</Box>
@@ -122,6 +142,9 @@ export default function YantraChatPage() {
 				{tab === "chat" && <ChatPane key={selected.id} project={selected} />}
 				{tab === "monitor" && (
 					<MonitorPane key={selected.id} project={selected} />
+				)}
+				{tab === "routines" && (
+					<RoutinesPane key={selected.id} project={selected} />
 				)}
 				{tab === "settings" && (
 					<SettingsPane key={selected.id} project={selected} onSaved={reload} />
@@ -484,6 +507,271 @@ function MonitorPane({ project }: { project: YantraProject }) {
 								</Typography>
 							</Stack>
 						))}
+					</Stack>
+				</Card>
+			</Stack>
+		</Box>
+	);
+}
+
+interface Routine {
+	id: string;
+	projectId: string;
+	name: string;
+	cron: string | null;
+	action: string;
+	prompt: string;
+	targetReady: number;
+	enabled: boolean;
+	lastRunAt: number | null;
+	nextRunAt: number | null;
+}
+
+/**
+ * Cron is the storage format, but nobody should have to write it to set up a
+ * schedule. These cover the shapes people actually want; "custom" is the escape
+ * hatch, and the server validates whatever ends up in the field either way.
+ */
+const CRON_PRESETS = [
+	["0 * * * *", "Every hour"],
+	["0 */6 * * *", "Every 6 hours"],
+	["0 3 * * *", "Daily · 03:00 UTC"],
+	["0 9 * * 1-5", "Weekdays · 09:00 UTC"],
+	["0 3 * * 1", "Weekly · Monday 03:00 UTC"],
+] as const;
+
+const describeCron = (cron: string | null): string => {
+	if (!cron) return "no schedule";
+	return CRON_PRESETS.find(([expr]) => expr === cron)?.[1] ?? `cron: ${cron}`;
+};
+
+const whenLabel = (ms: number | null): string =>
+	ms ? new Date(ms).toLocaleString() : "—";
+
+/**
+ * Routines (#18) — the self-sufficiency control. A routine tops the project's
+ * backlog back up on a schedule, so the factory keeps shipping after the queue
+ * empties instead of going quiet until someone files the next spec.
+ */
+function RoutinesPane({ project }: { project: YantraProject }) {
+	const [routines, setRoutines] = useState<Routine[] | null>(null);
+	const [name, setName] = useState("Keep the backlog fed");
+	const [cron, setCron] = useState<string>(CRON_PRESETS[2][0]);
+	const [customCron, setCustomCron] = useState("");
+	const [targetReady, setTargetReady] = useState(3);
+	const [prompt, setPrompt] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		try {
+			setRoutines(
+				await orpcFetch.yantra.listRoutines({ projectId: project.id }),
+			);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Could not load routines");
+			setRoutines([]);
+		}
+	}, [project.id]);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	const create = async () => {
+		setSaving(true);
+		setError(null);
+		try {
+			await orpcFetch.yantra.createRoutine({
+				projectId: project.id,
+				name: name.trim(),
+				cron: (cron === "custom" ? customCron : cron).trim(),
+				action: "groom_backlog",
+				prompt: prompt.trim(),
+				targetReady,
+			});
+			setPrompt("");
+			await load();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Could not create the routine");
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const toggle = async (r: Routine) => {
+		// Optimistic: the switch should feel instant; `load` reconciles.
+		setRoutines(
+			(prev) =>
+				prev?.map((x) =>
+					x.id === r.id ? { ...x, enabled: !x.enabled } : x,
+				) ?? prev,
+		);
+		try {
+			await orpcFetch.yantra.updateRoutine({ id: r.id, enabled: !r.enabled });
+		} finally {
+			await load();
+		}
+	};
+
+	const remove = async (r: Routine) => {
+		await orpcFetch.yantra.deleteRoutine({ id: r.id });
+		await load();
+	};
+
+	if (!routines) {
+		return (
+			<Stack alignItems="center" justifyContent="center" sx={{ height: "100%" }}>
+				<CircularProgress size={22} />
+			</Stack>
+		);
+	}
+
+	const cronValid = cron !== "custom" || customCron.trim().split(/\s+/).length === 5;
+
+	return (
+		<Box sx={{ overflowY: "auto", px: { xs: 2, md: 3 }, py: 2 }}>
+			<Stack spacing={2} sx={{ maxWidth: 820 }}>
+				{error && <Alert severity="error">{error}</Alert>}
+
+				<Card sx={{ p: { xs: 2, md: 2.5 } }}>
+					<Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+						Active routines
+					</Typography>
+					<Typography variant="caption" sx={{ color: "text.secondary" }}>
+						Each run tops the backlog up to the target, then the factory picks
+						the work up on its next tick. Times are UTC.
+					</Typography>
+
+					{routines.length === 0 ? (
+						<Typography variant="body2" sx={{ color: "text.secondary", mt: 2 }}>
+							No routines yet — this project only builds what you queue by hand.
+						</Typography>
+					) : (
+						<Stack divider={<Divider />} sx={{ mt: 1.5 }}>
+							{routines.map((r) => (
+								<Stack
+									key={r.id}
+									direction="row"
+									spacing={1}
+									alignItems="center"
+									sx={{ py: 1.25, flexWrap: "wrap", rowGap: 0.5 }}
+								>
+									<Box sx={{ flex: "1 1 220px", minWidth: 0 }}>
+										<Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+											{r.name}
+										</Typography>
+										<Typography
+											variant="caption"
+											sx={{ color: "text.secondary", display: "block" }}
+										>
+											{describeCron(r.cron)} · keep {r.targetReady} queued
+										</Typography>
+										<Typography
+											variant="caption"
+											sx={{ color: "text.secondary", display: "block" }}
+										>
+											last {whenLabel(r.lastRunAt)} · next{" "}
+											{r.enabled ? whenLabel(r.nextRunAt) : "paused"}
+										</Typography>
+									</Box>
+									<Switch
+										size="small"
+										checked={r.enabled}
+										onChange={() => void toggle(r)}
+										inputProps={{ "aria-label": `Enable ${r.name}` }}
+									/>
+									<Button
+										size="small"
+										color="error"
+										variant="text"
+										onClick={() => void remove(r)}
+									>
+										Delete
+									</Button>
+								</Stack>
+							))}
+						</Stack>
+					)}
+				</Card>
+
+				<Card sx={{ p: { xs: 2, md: 2.5 } }}>
+					<Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+						New routine
+					</Typography>
+					<Stack spacing={2}>
+						<TextField
+							size="small"
+							label="Name"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							fullWidth
+						/>
+						<Stack
+							direction={{ xs: "column", sm: "row" }}
+							spacing={2}
+							useFlexGap
+						>
+							<TextField
+								select
+								size="small"
+								label="Schedule"
+								value={cron}
+								onChange={(e) => setCron(e.target.value)}
+								sx={{ flex: 1 }}
+							>
+								{CRON_PRESETS.map(([expr, label]) => (
+									<MenuItem key={expr} value={expr}>
+										{label}
+									</MenuItem>
+								))}
+								<MenuItem value="custom">Custom cron…</MenuItem>
+							</TextField>
+							<TextField
+								size="small"
+								type="number"
+								label="Keep queued"
+								value={targetReady}
+								onChange={(e) =>
+									setTargetReady(
+										Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+									)
+								}
+								sx={{ width: { xs: "100%", sm: 140 } }}
+							/>
+						</Stack>
+						{cron === "custom" && (
+							<TextField
+								size="small"
+								label="Cron expression (UTC)"
+								placeholder="0 3 * * *"
+								value={customCron}
+								onChange={(e) => setCustomCron(e.target.value)}
+								helperText="Five fields: minute hour day-of-month month day-of-week"
+								fullWidth
+							/>
+						)}
+						<TextField
+							size="small"
+							label="Focus (optional)"
+							placeholder="e.g. test coverage, error handling, performance"
+							value={prompt}
+							onChange={(e) => setPrompt(e.target.value)}
+							multiline
+							minRows={2}
+							helperText="What the ideas should be about. Leave blank for whatever is most valuable next."
+							fullWidth
+						/>
+						<Box>
+							<Button
+								variant="contained"
+								disableElevation
+								disabled={saving || !name.trim() || !cronValid}
+								onClick={() => void create()}
+							>
+								{saving ? "Creating…" : "Create routine"}
+							</Button>
+						</Box>
 					</Stack>
 				</Card>
 			</Stack>
