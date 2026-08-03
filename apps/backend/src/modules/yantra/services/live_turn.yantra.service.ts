@@ -81,8 +81,14 @@ export const runLiveTurn = async (input: {
 	// productionBranch = where work branches FROM and PRs target (#24) — staging
 	// is a disposable force-pushed preview, so it must never be the merge base.
 	const { repo, baseBranch, productionBranch } = project;
+	// Provider keys resolve against the owning team, falling back to the
+	// installation's (#138) — so one team's rotation never moves another's.
+	const teamId = project.teamId;
 
-	const claudeToken = await getAppSecretValue("CLAUDE_CODE_OAUTH_TOKEN");
+	const claudeToken = await getAppSecretValue(
+		"CLAUDE_CODE_OAUTH_TOKEN",
+		teamId,
+	);
 	if (!claudeToken) {
 		await releaseClaim(
 			repo,
@@ -126,7 +132,7 @@ export const runLiveTurn = async (input: {
 	// container when NVIDIA isn't set up (or too few models exist). The self-
 	// check gate + grade + rails are identical either way, so the lane choice
 	// never affects what can merge.
-	const { providerKeys, sources } = await resolveFreeProviders();
+	const { providerKeys, sources } = await resolveFreeProviders(teamId);
 	const models = candidateModels("execute", sources)
 		.slice(0, 3)
 		.map((m) => m.ref);

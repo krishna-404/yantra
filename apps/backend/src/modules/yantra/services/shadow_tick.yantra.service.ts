@@ -359,7 +359,10 @@ export const runShadowTick = async (): Promise<ProjectShadowResult[]> => {
 			if (project.mode === "live") {
 				// Grade runs detached (rubric containers are slow) with its own
 				// serial guard — v0 order preserved: reap → grade → claim.
-				const claudeToken = await getAppSecretValue("CLAUDE_CODE_OAUTH_TOKEN");
+				const claudeToken = await getAppSecretValue(
+					"CLAUDE_CODE_OAUTH_TOKEN",
+					project.teamId,
+				);
 				if (claudeToken) {
 					void runGradeScan({
 						repo: project.repo,

@@ -31,6 +31,7 @@ const FALLBACK_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export interface RoutineRow {
 	id: string;
+	teamId: string | null;
 	projectId: string;
 	name: string;
 	cron: string | null;

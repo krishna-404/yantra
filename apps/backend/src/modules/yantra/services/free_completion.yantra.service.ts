@@ -65,6 +65,8 @@ export const freeComplete = async (input: {
 	maxTokens?: number;
 	/** Force a specific provider id; otherwise first-with-key wins. */
 	providerId?: string;
+	/** Owning team, so a team's own provider key wins over the operator's (#138). */
+	teamId?: string | null;
 }): Promise<FreeCompletionResult> => {
 	const ordered = input.providerId
 		? COMPLETION_PROVIDERS.filter((p) => p.id === input.providerId)
@@ -72,7 +74,10 @@ export const freeComplete = async (input: {
 
 	let firstErr: string | null = null;
 	for (const provider of ordered) {
-		const key = await getAppSecretValue(provider.secretKey);
+		const key = await getAppSecretValue(
+			provider.secretKey,
+			input.teamId ?? null,
+		);
 		if (!key) continue;
 		const started = Date.now();
 		try {

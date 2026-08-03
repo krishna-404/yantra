@@ -32,16 +32,22 @@ export async function yantraDreamOnce(): Promise<void> {
 			`;
 			if (!lockResult.rows[0]?.acquired) return;
 
-			const claudeToken = await getAppSecretValue("CLAUDE_CODE_OAUTH_TOKEN");
-			if (!claudeToken) {
-				logger.warn("yantra dream skipped: no Claude token configured");
-				return;
-			}
-
 			const projects = (await listEnabledProjectsWithTokens()).filter(
 				(p) => p.mode === "live",
 			);
 			for (const project of projects) {
+				// Resolved per project so each team's own Claude key is used (#138).
+				const claudeToken = await getAppSecretValue(
+					"CLAUDE_CODE_OAUTH_TOKEN",
+					project.teamId,
+				);
+				if (!claudeToken) {
+					logger.warn(
+						{ repo: project.repo },
+						"yantra dream skipped: no Claude token for this project's team",
+					);
+					continue;
+				}
 				const outcome = await runDream({
 					id: project.id,
 					repo: project.repo,

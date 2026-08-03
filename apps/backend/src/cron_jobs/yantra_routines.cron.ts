@@ -42,6 +42,7 @@ export async function yantraRoutinesOnce(): Promise<void> {
 				.limit(20)
 				.select(
 					"id",
+					"teamId",
 					"projectId",
 					"name",
 					"cron",

@@ -92,6 +92,7 @@ const extractModels = (body: unknown): { id: string }[] => {
 /** Verify a lane's stored key works by listing its models. No token cost. */
 export const runLaneSmoke = async (
 	laneId: string,
+	teamId: string | null = null,
 ): Promise<LaneSmokeResult> => {
 	const lane = LANES.find((l) => l.id === laneId);
 	if (!lane) throw new Error(`unknown lane: ${laneId}`);
@@ -106,7 +107,7 @@ export const runLaneSmoke = async (
 		error: null,
 	};
 
-	const apiKey = await getAppSecretValue(lane.secretKey);
+	const apiKey = await getAppSecretValue(lane.secretKey, teamId);
 	if (!apiKey) return { ...base, error: "no key set for this lane" };
 
 	const started = Date.now();
@@ -159,12 +160,14 @@ export interface LaneView {
 }
 
 /** Registry + whether each lane's key is stored (never the key itself). */
-export const listLanes = async (): Promise<LaneView[]> => {
+export const listLanes = async (
+	teamId: string | null = null,
+): Promise<LaneView[]> => {
 	const results = await Promise.all(
 		LANES.map(async (l) => ({
 			id: l.id,
 			label: l.label,
-			keyPresent: (await getAppSecretValue(l.secretKey)) !== null,
+			keyPresent: (await getAppSecretValue(l.secretKey, teamId)) !== null,
 		})),
 	);
 	return results;
@@ -319,7 +322,9 @@ export const candidateModels = (
  * candidates from. Groq first — it's the fastest and the catalog lists it first,
  * so the default top-3 executor pick is all Groq when its key is set.
  */
-export const resolveFreeProviders = async (): Promise<{
+export const resolveFreeProviders = async (
+	teamId: string | null = null,
+): Promise<{
 	providerKeys: Record<string, string>;
 	sources: LaneSource[];
 }> => {
@@ -327,17 +332,17 @@ export const resolveFreeProviders = async (): Promise<{
 	const sources: LaneSource[] = [];
 	// OpenCode Zen first — its own hosted free models with generous limits (the
 	// key is read by opencode automatically as OPENCODE_API_KEY).
-	const opencode = await getAppSecretValue("OPENCODE_API_KEY");
+	const opencode = await getAppSecretValue("OPENCODE_API_KEY", teamId);
 	if (opencode) {
 		providerKeys.OPENCODE_API_KEY = opencode;
 		sources.push("opencode");
 	}
-	const groq = await getAppSecretValue("GROQ_API_KEY");
+	const groq = await getAppSecretValue("GROQ_API_KEY", teamId);
 	if (groq) {
 		providerKeys.GROQ_API_KEY = groq;
 		sources.push("groq");
 	}
-	const nvidia = await getAppSecretValue("NVIDIA_API_KEY");
+	const nvidia = await getAppSecretValue("NVIDIA_API_KEY", teamId);
 	if (nvidia) {
 		providerKeys.NVIDIA_API_KEY = nvidia;
 		sources.push("nvidia");

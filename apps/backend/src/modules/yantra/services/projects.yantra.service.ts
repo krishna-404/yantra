@@ -110,6 +110,8 @@ export const listEnabledProjectsWithTokens = async (): Promise<
 		autoMergeToMain: boolean;
 		mode: string;
 		ghToken: string;
+		/** Owning team — picks which provider keys the run resolves (#138). */
+		teamId: string | null;
 	}[]
 > => {
 	const rows = await db.yantraProjects
@@ -122,6 +124,7 @@ export const listEnabledProjectsWithTokens = async (): Promise<
 			"autoMergeToMain",
 			"mode",
 			"ghTokenCiphertext",
+			"teamId",
 		)
 		.order({ createdAt: "ASC" });
 	return rows.map((r) => ({
@@ -132,6 +135,7 @@ export const listEnabledProjectsWithTokens = async (): Promise<
 		autoMergeToMain: r.autoMergeToMain,
 		mode: r.mode,
 		ghToken: openSecret(r.ghTokenCiphertext),
+		teamId: r.teamId,
 	}));
 };
 
