@@ -1,6 +1,7 @@
 import { db } from "@backend/db/db";
 import {
 	APP_SECRET_KEYS,
+	clearTeamSecret,
 	listAppSecrets,
 	setAppSecret,
 } from "@backend/modules/yantra/services/app_secrets.yantra.service";
@@ -203,7 +204,7 @@ const sendMessage = rpcProtectedActiveTeamProcedure
 			})
 			.select("id", "role", "text", "payload", "createdAt");
 
-		const draft = await groomIdea(input.idea);
+		const draft = await groomIdea(input.idea, teamId);
 
 		const draftMsg = await db.yantraChatMessages
 			.create({
@@ -505,16 +506,18 @@ const deleteRoutine = rpcProtectedActiveTeamProcedure
  * lived only in the deleted super-admin cockpit, which meant a fresh install had
  * no in-app way to supply the Claude token it can't run without.
  *
- * They are installation-wide today, not per-team: `getAppSecretValue` is read by
- * eleven runner call sites that have no team in scope, and scoping it properly
- * is its own change (#138). Reads are open to any team member because they only
- * ever return the last four characters; WRITES stay super-admin, so one team
- * can't overwrite the key every other team is running on.
+ * Scoped per team (#138): a team sets its own keys, and anything it hasn't set
+ * falls back to the installation key the operator configured — the same
+ * resolution the runners use, so the list shows what a run would actually pick
+ * up. Writing only ever touches this team's own row, so one team can never
+ * change what another runs on. The installation fallback stays super-admin.
  */
 const providerKeyZod = z.object({
 	key: z.string(),
 	valueHint: z.string(),
 	updatedAt: z.number(),
+	/** False ⇒ inherited from the installation, not set by this team. */
+	teamOwned: z.boolean(),
 });
 
 const listProviderKeys = rpcProtectedActiveTeamProcedure
@@ -526,13 +529,14 @@ const listProviderKeys = rpcProtectedActiveTeamProcedure
 			// The closed set of keys the runners look for, so the UI can list the
 			// ones that are still missing rather than only the ones already stored.
 			known: z.array(z.enum(APP_SECRET_KEYS)),
-			canEdit: z.boolean(),
+			/** Whether the caller may also edit the installation-wide fallback. */
+			canEditInstallation: z.boolean(),
 		}),
 	)
 	.handler(async ({ context }) => ({
-		keys: await listAppSecrets(),
+		keys: await listAppSecrets(context.user.activeTeamAppId),
 		known: [...APP_SECRET_KEYS],
-		canEdit: isSuperAdmin(context.user),
+		canEditInstallation: isSuperAdmin(context.user),
 	}));
 
 const setProviderKey = rpcProtectedActiveTeamProcedure
@@ -541,17 +545,36 @@ const setProviderKey = rpcProtectedActiveTeamProcedure
 		z.object({
 			key: z.enum(APP_SECRET_KEYS),
 			value: z.string().min(8),
+			/**
+			 * Write the installation-wide fallback instead of this team's own key.
+			 * Operator-only: it changes what every team without an override runs on.
+			 */
+			installationWide: z.boolean().default(false),
 		}),
 	)
 	.output(z.object({ ok: z.boolean() }))
 	.handler(async ({ input, context }) => {
-		if (!isSuperAdmin(context.user)) {
+		if (input.installationWide && !isSuperAdmin(context.user)) {
 			throw new ORPCError("FORBIDDEN", {
 				status: 403,
-				message: "Only an operator can change installation provider keys",
+				message: "Only an operator can change the installation-wide key",
 			});
 		}
-		await setAppSecret(input.key, input.value);
+		await setAppSecret(
+			input.key,
+			input.value,
+			input.installationWide ? null : context.user.activeTeamAppId,
+		);
+		return { ok: true };
+	});
+
+/** Drop this team's override so it inherits the installation key again. */
+const clearProviderKey = rpcProtectedActiveTeamProcedure
+	.route({ method: "POST", tags: ["Yantra"] })
+	.input(z.object({ key: z.enum(APP_SECRET_KEYS) }))
+	.output(z.object({ ok: z.boolean() }))
+	.handler(async ({ input, context }) => {
+		await clearTeamSecret(input.key, context.user.activeTeamAppId);
 		return { ok: true };
 	});
 
@@ -565,6 +588,7 @@ export const yantraUserAppRouter = {
 	deleteRoutine,
 	listProviderKeys,
 	setProviderKey,
+	clearProviderKey,
 	listMessages,
 	sendMessage,
 	createProject,

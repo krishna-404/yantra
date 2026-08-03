@@ -109,8 +109,14 @@ export const draftFromGroomText = (
 	return { title: parsed.title.trim().slice(0, 120), tier, body, groomedBy };
 };
 
-/** Groom a rough idea into a spec draft. Does NOT create anything. */
-export const groomIdea = async (idea: string): Promise<SpecDraft> => {
+/**
+ * Groom a rough idea into a spec draft. Does NOT create anything.
+ * `teamId` picks the team's own free-lane key when it has one (#138).
+ */
+export const groomIdea = async (
+	idea: string,
+	teamId: string | null = null,
+): Promise<SpecDraft> => {
 	const trimmed = idea.trim();
 	if (trimmed.length < 4) throw new Error("idea is too short to groom");
 
@@ -119,6 +125,7 @@ export const groomIdea = async (idea: string): Promise<SpecDraft> => {
 		user: `Idea: ${trimmed}`,
 		temperature: 0.2,
 		maxTokens: 1200,
+		teamId,
 	});
 
 	return draftFromGroomText(

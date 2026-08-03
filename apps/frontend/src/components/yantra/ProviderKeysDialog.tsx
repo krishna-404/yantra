@@ -10,6 +10,8 @@ import {
 	Dialog,
 	DialogContent,
 	DialogTitle,
+	FormControlLabel,
+	Switch,
 	TextField,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
@@ -18,6 +20,11 @@ import { useCallback, useEffect, useState } from "react";
  * Provider keys — the credentials every run depends on. They used to live only
  * in the super-admin cockpit, so once that was stripped a fresh install had no
  * in-app way to supply the Claude token it can't run without.
+ *
+ * Two scopes (#138). A key set here belongs to this team; anything the team
+ * hasn't set is inherited from the installation-wide key the operator
+ * configured, and the row says which it is — the list shows what a run would
+ * actually pick up, not merely what happens to be stored.
  *
  * Write-only by design: the server returns the last four characters and nothing
  * else, so a key can be confirmed and rotated but never read back out.
@@ -45,6 +52,7 @@ interface KeyRow {
 	key: string;
 	valueHint: string;
 	updatedAt: number;
+	teamOwned: boolean;
 }
 
 export function ProviderKeysDialog({
@@ -57,10 +65,11 @@ export function ProviderKeysDialog({
 	const [state, setState] = useState<{
 		keys: KeyRow[];
 		known: ProviderKeyName[];
-		canEdit: boolean;
+		canEditInstallation: boolean;
 	} | null>(null);
 	const [drafts, setDrafts] = useState<Record<string, string>>({});
-	const [saving, setSaving] = useState<string | null>(null);
+	const [installationWide, setInstallationWide] = useState(false);
+	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
@@ -78,16 +87,29 @@ export function ProviderKeysDialog({
 	const save = async (key: ProviderKeyName) => {
 		const value = (drafts[key] ?? "").trim();
 		if (value.length < 8) return;
-		setSaving(key);
+		setBusy(key);
 		setError(null);
 		try {
-			await orpcFetch.yantra.setProviderKey({ key, value });
+			await orpcFetch.yantra.setProviderKey({ key, value, installationWide });
 			setDrafts((d) => ({ ...d, [key]: "" }));
 			await load();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Could not save the key");
 		} finally {
-			setSaving(null);
+			setBusy(null);
+		}
+	};
+
+	const clear = async (key: ProviderKeyName) => {
+		setBusy(key);
+		setError(null);
+		try {
+			await orpcFetch.yantra.clearProviderKey({ key });
+			await load();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Could not clear the key");
+		} finally {
+			setBusy(null);
 		}
 	};
 
@@ -107,21 +129,34 @@ export function ProviderKeysDialog({
 					<Stack spacing={2} sx={{ mt: 0.5 }}>
 						<Typography variant="caption" sx={{ color: "text.secondary" }}>
 							Stored encrypted and never shown again — only the last four
-							characters come back. These apply to the whole installation, not
-							just this team.
+							characters come back. Keys you set here belong to this team;
+							anything you leave unset is inherited from the installation.
 						</Typography>
 						{error && <Alert severity="error">{error}</Alert>}
-						{!state.canEdit && (
-							<Alert severity="info">
-								You can see which keys are set, but only an operator can change
-								them.
-							</Alert>
+
+						{state.canEditInstallation && (
+							<FormControlLabel
+								control={
+									<Switch
+										size="small"
+										checked={installationWide}
+										onChange={(e) => setInstallationWide(e.target.checked)}
+									/>
+								}
+								label={
+									<Typography variant="caption">
+										Save as the installation-wide key — changes what every team
+										without its own key runs on.
+									</Typography>
+								}
+							/>
 						)}
 
 						<Stack divider={<Divider />} spacing={0}>
 							{state.known.map((key) => {
 								const set = state.keys.find((k) => k.key === key);
 								const label = LABELS[key] ?? { name: key, help: "" };
+								const draft = (drafts[key] ?? "").trim();
 								return (
 									<Box key={key} sx={{ py: 1.75 }}>
 										<Stack
@@ -137,7 +172,9 @@ export function ProviderKeysDialog({
 												variant="caption"
 												sx={{ color: set ? "success.main" : "text.secondary" }}
 											>
-												{set ? `set · ••••${set.valueHint}` : "not set"}
+												{set
+													? `${set.teamOwned ? "this team" : "inherited"} · ••••${set.valueHint}`
+													: "not set"}
 											</Typography>
 										</Stack>
 										{label.help && (
@@ -148,35 +185,42 @@ export function ProviderKeysDialog({
 												{label.help}
 											</Typography>
 										)}
-										{state.canEdit && (
-											<Stack
-												direction={{ xs: "column", sm: "row" }}
-												spacing={1}
-												sx={{ mt: 1 }}
-												useFlexGap
+										<Stack
+											direction={{ xs: "column", sm: "row" }}
+											spacing={1}
+											sx={{ mt: 1 }}
+											useFlexGap
+										>
+											<TextField
+												size="small"
+												type="password"
+												placeholder={set ? "Replace…" : "Paste value"}
+												value={drafts[key] ?? ""}
+												onChange={(e) =>
+													setDrafts((d) => ({ ...d, [key]: e.target.value }))
+												}
+												sx={{ flex: 1 }}
+											/>
+											<Button
+												size="small"
+												variant="outlined"
+												disabled={busy === key || draft.length < 8}
+												onClick={() => void save(key)}
 											>
-												<TextField
-													size="small"
-													type="password"
-													placeholder={set ? "Replace…" : "Paste value"}
-													value={drafts[key] ?? ""}
-													onChange={(e) =>
-														setDrafts((d) => ({ ...d, [key]: e.target.value }))
-													}
-													sx={{ flex: 1 }}
-												/>
+												{busy === key ? "Saving…" : "Save"}
+											</Button>
+											{set?.teamOwned && (
 												<Button
 													size="small"
-													variant="outlined"
-													disabled={
-														saving === key || (drafts[key] ?? "").trim().length < 8
-													}
-													onClick={() => void save(key)}
+													variant="text"
+													color="error"
+													disabled={busy === key}
+													onClick={() => void clear(key)}
 												>
-													{saving === key ? "Saving…" : "Save"}
+													Use inherited
 												</Button>
-											</Stack>
-										)}
+											)}
+										</Stack>
 									</Box>
 								);
 							})}

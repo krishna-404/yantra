@@ -402,10 +402,11 @@ const tryFreeLaneRoute = rpcSuperAdminProcedure
 	.handler(async ({ input }) => {
 		const project = await db.yantraProjects
 			.findBy({ id: input.projectId })
-			.select("id", "repo", "baseBranch", "ghTokenCiphertext");
+			.select("id", "repo", "baseBranch", "ghTokenCiphertext", "teamId");
 		const ghToken = openSecret(project.ghTokenCiphertext);
 
-		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY");
+		// Same resolution the real runners use: this project's team first (#138).
+		const nvidiaKey = await getAppSecretValue("NVIDIA_API_KEY", project.teamId);
 		if (!nvidiaKey) {
 			return { started: false, model: "", error: "NVIDIA_API_KEY not set" };
 		}
