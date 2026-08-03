@@ -86,6 +86,9 @@ export const runRoutine = async (routine: RoutineRow): Promise<string> => {
 			const draft = await groomIdea(
 				`Propose ONE concrete, self-contained improvement for this project. Focus: ${theme}. ` +
 					"It must be small enough to ship as a single PR, and must not duplicate work already queued.",
+				// The routine's own team, so grooming bills the same free-lane key
+				// the rest of that team's runs use (#138).
+				routine.teamId,
 			);
 			await createReadySpec({
 				repo: project.repo,
@@ -106,11 +109,16 @@ export const runRoutine = async (routine: RoutineRow): Promise<string> => {
 };
 
 /**
- * Stamps the run and schedules the next one. Kept separate from runRoutine so a
- * failed action still advances the clock — otherwise a permanently-failing
- * routine would be retried in a tight loop every tick.
+ * Moves the schedule forward. Called by the sweep at DISPATCH time, not after
+ * the run: the routine must stop being "due" the moment it's queued, or the
+ * next tick five minutes later queues it again. A failed run therefore still
+ * advances the clock — its retry is the next cron boundary, which is what
+ * keeps a permanently-broken routine from spinning every tick.
  */
-export const advanceSchedule = async (routine: RoutineRow): Promise<void> => {
+export const advanceSchedule = async (routine: {
+	id: string;
+	cron: string | null;
+}): Promise<void> => {
 	const now = new Date();
 	let next: Date | null = null;
 	if (routine.cron) {
@@ -124,7 +132,46 @@ export const advanceSchedule = async (routine: RoutineRow): Promise<void> => {
 		}
 	}
 	await db.yantraRoutines.findBy({ id: routine.id }).update({
-		lastRunAt: now.getTime(),
 		nextRunAt: (next ?? new Date(now.getTime() + FALLBACK_DELAY_MS)).getTime(),
 	});
+};
+
+/**
+ * The task-side entry point (#140): load the routine, run it, and stamp when it
+ * actually ran. `lastRunAt` is written here rather than at dispatch so it means
+ * "last executed" — if the queue is backed up, the UI shouldn't claim a run
+ * that hasn't happened yet.
+ */
+export const runRoutineById = async (routineId: string): Promise<string> => {
+	const routine = await db.yantraRoutines
+		.where({ id: routineId })
+		.select(
+			"id",
+			"teamId",
+			"projectId",
+			"name",
+			"cron",
+			"action",
+			"prompt",
+			"targetReady",
+			"enabled",
+		)
+		.takeOptional();
+	if (!routine) return "routine_deleted";
+	// Disabled between dispatch and execution — honour the newer intent.
+	if (!routine.enabled) return "routine_disabled";
+
+	try {
+		return await runRoutine(routine);
+	} finally {
+		await db.yantraRoutines
+			.findBy({ id: routineId })
+			.update({ lastRunAt: Date.now() })
+			.catch((err) =>
+				logger.error(
+					{ err, routine: routineId },
+					"routine: lastRunAt stamp failed",
+				),
+			);
+	}
 };

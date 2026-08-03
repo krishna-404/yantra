@@ -1,8 +1,7 @@
 import { db } from "@backend/db/db";
-import {
-	advanceSchedule,
-	runRoutine,
-} from "@backend/modules/yantra/services/routines_runner.yantra.service";
+import { yantraRoutineRunTaskDef } from "@backend/events/events.schema";
+import { tbus } from "@backend/events/tbus";
+import { advanceSchedule } from "@backend/modules/yantra/services/routines_runner.yantra.service";
 import { logger } from "@backend/utils/logger.utils";
 import cron, { type ScheduledTask } from "node-cron";
 
@@ -15,10 +14,16 @@ let scheduledTask: ScheduledTask | null = null;
  * The Routines scheduler (#18) — the self-sufficiency milestone.
  *
  * Every five minutes: find enabled routines whose stored `nextRunAt` has
- * passed, run them, and advance their schedule. Because "when do I run next"
- * lives in the DB rather than in a process timer, a deploy or restart can't
- * lose a schedule, and a second replica can't double-fire one — the advisory
- * lock serialises the sweep.
+ * passed, queue one task each, and advance their schedule. Because "when do I
+ * run next" lives in the DB rather than in a process timer, a deploy or restart
+ * can't lose a schedule, and a second replica can't double-fire one — the
+ * advisory lock serialises the sweep.
+ *
+ * The sweep only DISPATCHES (#140). Grooming is slow and talks to two APIs, so
+ * running it inline held this transaction — and its advisory lock — for as long
+ * as the slowest provider took, and a failure left nothing behind but a log
+ * line. As a pg-tbus task it gets an expiry, a singleton key, and a row in
+ * pg_tbus_task_logs like every other background job.
  *
  * A routine that has never run (`nextRunAt IS NULL`) fires on the next sweep,
  * so creating one in the UI takes effect within minutes instead of waiting for
@@ -40,38 +45,38 @@ export async function yantraRoutinesOnce(): Promise<void> {
 				)
 				.order({ nextRunAt: "ASC" })
 				.limit(20)
-				.select(
-					"id",
-					"teamId",
-					"projectId",
-					"name",
-					"cron",
-					"action",
-					"prompt",
-					"targetReady",
-				);
+				// Only what dispatch needs: the id to queue, the cron to advance the
+				// schedule, the name for the log line. The task reloads the rest.
+				.select("id", "name", "cron");
 
 			if (due.length === 0) return;
 
 			for (const routine of due) {
-				let outcome = "error";
-				try {
-					outcome = await runRoutine(routine);
-				} catch (err) {
-					logger.error({ err, routine: routine.id }, "routine run failed");
-				}
-				// Always advance, even on failure — otherwise a permanently broken
-				// routine would be retried every sweep forever.
+				// Advance FIRST: the routine has to stop being due the moment it is
+				// queued, or the next sweep queues it again. If the enqueue then
+				// fails, the cost is one skipped cycle, not a duplicate run.
 				await advanceSchedule(routine).catch((err) =>
 					logger.error(
 						{ err, routine: routine.id },
 						"routine reschedule failed",
 					),
 				);
-				logger.info(
-					{ routine: routine.id, name: routine.name, outcome },
-					"yantra routine fired",
-				);
+				try {
+					await tbus.send(
+						yantraRoutineRunTaskDef.from(
+							{ routineId: routine.id },
+							// One active run per routine: a slow groom must not stack
+							// behind itself when the next boundary comes around.
+							{ singletonKey: routine.id },
+						),
+					);
+					logger.info(
+						{ routine: routine.id, name: routine.name },
+						"yantra routine queued",
+					);
+				} catch (err) {
+					logger.error({ err, routine: routine.id }, "routine enqueue failed");
+				}
 			}
 		});
 	} catch (error) {
