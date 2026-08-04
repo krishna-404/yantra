@@ -58,7 +58,7 @@ const readyCount = async (repo: string, token: string): Promise<number> => {
 export const runRoutine = async (routine: RoutineRow): Promise<string> => {
 	const project = await db.yantraProjects
 		.findByOptional({ id: routine.projectId })
-		.select("repo", "ghTokenCiphertext", "enabled", "mode");
+		.select("repo", "baseBranch", "ghTokenCiphertext", "enabled", "mode");
 	if (!project || !project.enabled) return "project_disabled";
 
 	const ghToken = openSecret(project.ghTokenCiphertext);
@@ -91,6 +91,9 @@ export const runRoutine = async (routine: RoutineRow): Promise<string> => {
 				// The routine's own team, so grooming bills the same free-lane key
 				// the rest of that team's runs use (#138).
 				routine.teamId,
+				// …and the project's repo, so the spec names real paths instead of
+				// being parked by advise for naming none (#145).
+				{ repo: project.repo, branch: project.baseBranch, ghToken },
 			);
 			await createReadySpec({
 				repo: project.repo,
