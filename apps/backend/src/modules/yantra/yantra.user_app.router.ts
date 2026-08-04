@@ -204,7 +204,17 @@ const sendMessage = rpcProtectedActiveTeamProcedure
 			})
 			.select("id", "role", "text", "payload", "createdAt");
 
-		const draft = await groomIdea(input.idea, teamId);
+		// Groom against the project's own repo (#145): a spec that can't name the
+		// files it touches gets parked by advise, so the chat has to hand the
+		// groomer the map before it writes anything.
+		const project = await db.yantraProjects
+			.findBy({ id: input.projectId })
+			.select("repo", "baseBranch", "ghTokenCiphertext");
+		const draft = await groomIdea(input.idea, teamId, {
+			repo: project.repo,
+			branch: project.baseBranch,
+			ghToken: openSecret(project.ghTokenCiphertext),
+		});
 
 		const draftMsg = await db.yantraChatMessages
 			.create({

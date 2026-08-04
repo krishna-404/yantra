@@ -1,5 +1,6 @@
 import { freeComplete } from "@backend/modules/yantra/services/free_completion.yantra.service";
 import { ghRequest } from "@backend/modules/yantra/services/gh_client.yantra.service";
+import { getRepoContext } from "@backend/modules/yantra/services/repo_context.yantra.service";
 import { extractJsonBlock } from "@backend/modules/yantra/services/turn_shared.yantra.service";
 
 /**
@@ -10,9 +11,12 @@ import { extractJsonBlock } from "@backend/modules/yantra/services/turn_shared.y
  * issue the tick picks up. This is how "everything gets spec-ready with a human
  * in the loop" without the human hand-writing every spec.
  *
- * Grooming is pure text (no repo, no container), so it's a single free-model
- * call — fast and cheap. Approval is a deliberate second step: the draft is
- * shown, the operator edits/approves, and only then does an issue get created.
+ * Grooming reads the repo's shape but never checks it out: a directory map and
+ * the house-rules docs, not a container. That was the missing ingredient — a
+ * blind groomer cannot name the files a spec touches, and advise parks every
+ * spec that names none (#145). Approval is still a deliberate second step: the
+ * draft is shown, the operator edits/approves, and only then does an issue get
+ * created.
  */
 
 const TIERS = ["T0", "T1", "T2", "T3"] as const;
@@ -21,7 +25,7 @@ export type Tier = (typeof TIERS)[number];
 export interface SpecDraft {
 	title: string;
 	tier: Tier;
-	/** Issue-form markdown body: type, problem, success criteria, out-of-scope. */
+	/** Issue-form markdown: type, problem, criteria, files expected, out-of-scope. */
 	body: string;
 	/** Which free provider/model groomed it (shown in the chat, recorded later). */
 	groomedBy: string;
@@ -34,6 +38,8 @@ Rules:
 - The spec must be SMALL and focused. Prefer the smallest change that delivers the idea. If the idea is large, scope the json to a first slice and note the rest under out-of-scope.
 - Success criteria MUST be concrete, checkable, and include that lint, type-check and tests pass. No vague criteria.
 - Never weaken or delete tests as a success criterion.
+- CRITICAL: out_of_scope must never exclude anything a success criterion requires. If a criterion says a behaviour must work, that behaviour is IN scope — do not also list it as excluded. A spec that contradicts itself is rejected by the review gate and wastes the run. When in doubt, cut the criterion rather than excluding what it demands.
+- files_expected must name real paths taken from the REPO MAP below. Name the directory at minimum, the file where you can. Never invent a path that is not consistent with the map. If the map is empty, return an empty list rather than guessing.
 - Estimate tier by blast radius: T0 = tiny/safe (tests, docs, one-line fix); T1 = small feature/refactor, no protected paths; T2 = larger feature; T3 = touches auth/secrets/migrations/CI/harness (human-merge).
 
 json shape:
@@ -43,17 +49,116 @@ json shape:
   "type": "feature|fix|test|docs|refactor|chore",
   "problem": "1-3 sentences: what and why",
   "success_criteria": ["checkable item", "lint + check-types + tests pass"],
+  "files_expected": ["path/from/the/repo/map.ts"],
   "out_of_scope": ["explicitly excluded"]
 }`;
 
 const isTier = (v: unknown): v is Tier =>
 	typeof v === "string" && (TIERS as readonly string[]).includes(v);
 
+/**
+ * Crude suffix stripper, not a linguistics engine. It exists so "answering"
+ * and "answered" compare equal — without it the exact #145 contradiction slips
+ * through at 0.60 overlap, just under the bar.
+ */
+const stem = (w: string): string => {
+	if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
+	if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
+	if (w.length > 4 && w.endsWith("s") && !w.endsWith("ss"))
+		return w.slice(0, -1);
+	return w;
+};
+
+/** Stemmed. Words too common to mean two lines are about the same thing. */
+const STOPWORDS = new Set(
+	[
+		"the",
+		"and",
+		"for",
+		"with",
+		"that",
+		"this",
+		"from",
+		"into",
+		"are",
+		"not",
+		"any",
+		"all",
+		"its",
+		"must",
+		"should",
+		"will",
+		"can",
+		"when",
+		"then",
+		"than",
+		"out",
+		"scope",
+		"each",
+		"per",
+		"via",
+		"use",
+		"using",
+		"add",
+		"pass",
+		"test",
+		"lint",
+		"type",
+		"code",
+		"logic",
+		"yarn",
+	].map(stem),
+);
+
+const meaningfulWords = (s: string): Set<string> =>
+	new Set(
+		s
+			.toLowerCase()
+			.replace(/[^a-z0-9\s]/g, " ")
+			.split(/\s+/)
+			.filter((w) => w.length > 3)
+			.map(stem)
+			.filter((w) => !STOPWORDS.has(w)),
+	);
+
+/**
+ * Drop out-of-scope lines that exclude something a success criterion demands.
+ *
+ * This is the failure that killed #145: the groomer required "questions are
+ * answered in-thread" and simultaneously excluded "the logic for answering
+ * questions", and advise refused it — correctly — as "an incoherent scope
+ * boundary, not a detail gap". The prompt now forbids it, but a cheap model
+ * will still do it sometimes, so the contradiction is also removed here.
+ *
+ * Success criteria win: they are the contract the grader checks. An
+ * out-of-scope line that negates one is noise at best and a blocked run at
+ * worst. Exported for tests — this rule has to stay honest.
+ */
+export const dropContradictoryExclusions = (
+	successCriteria: string[],
+	outOfScope: string[],
+): string[] => {
+	const criteriaWords = successCriteria.map(meaningfulWords);
+	return outOfScope.filter((line) => {
+		const words = meaningfulWords(line);
+		if (words.size === 0) return true;
+		return !criteriaWords.some((crit) => {
+			if (crit.size === 0) return false;
+			let shared = 0;
+			for (const w of words) if (crit.has(w)) shared++;
+			// Two thirds of an exclusion's distinctive words also appearing in a
+			// single criterion means they are about the same behaviour.
+			return shared / words.size >= 0.66;
+		});
+	});
+};
+
 /** Renders the groomed json into the issue-form markdown the harness parses. */
 const renderBody = (spec: {
 	type: string;
 	problem: string;
 	success_criteria: string[];
+	files_expected: string[];
 	out_of_scope: string[];
 }): string => {
 	// The CI gate is non-negotiable — guarantee it's a criterion even if the
@@ -62,14 +167,20 @@ const renderBody = (spec: {
 	if (!criteria.some((c) => /lint|check-types|test/i.test(c)))
 		criteria.push("`yarn lint`, `yarn check-types` and `yarn test:run` pass");
 	const crit = criteria.map((c) => `- [ ] ${c}`).join("\n");
-	const oos = spec.out_of_scope.length
-		? spec.out_of_scope.map((o) => `- ${o}`).join("\n")
+	const kept = dropContradictoryExclusions(criteria, spec.out_of_scope);
+	const oos = kept.length ? kept.map((o) => `- ${o}`).join("\n") : "—";
+	// advise asks "which files does this touch?" and parks the spec when it
+	// can't tell. Answering it up front is the difference between a claimable
+	// spec and one that burns an Opus turn to be rejected.
+	const files = spec.files_expected.length
+		? spec.files_expected.map((f) => `- \`${f}\``).join("\n")
 		: "—";
 	return [
 		`### type\n\n${spec.type}`,
 		`### depends-on\n\n—`,
 		`## Problem\n\n${spec.problem}`,
 		`## Success criteria\n\n${crit}`,
+		`## Files expected\n\n${files}`,
 		`## Out of scope\n\n${oos}`,
 		`## Context\n\nGroomed from an operator idea via Yantra spec-intake (Phase 4). Keep the change minimal and focused.`,
 	].join("\n\n");
@@ -101,6 +212,11 @@ export const draftFromGroomText = (
 					(c): c is string => typeof c === "string" && c.trim().length > 0,
 				)
 			: [],
+		files_expected: Array.isArray(parsed.files_expected)
+			? parsed.files_expected.filter(
+					(f): f is string => typeof f === "string" && f.trim().length > 0,
+				)
+			: [],
 		out_of_scope: Array.isArray(parsed.out_of_scope)
 			? parsed.out_of_scope.filter((o): o is string => typeof o === "string")
 			: [],
@@ -116,15 +232,29 @@ export const draftFromGroomText = (
 export const groomIdea = async (
 	idea: string,
 	teamId: string | null = null,
+	repo: { repo: string; branch: string; ghToken: string } | null = null,
 ): Promise<SpecDraft> => {
 	const trimmed = idea.trim();
 	if (trimmed.length < 4) throw new Error("idea is too short to groom");
 
+	// Blind grooming still works — it just produces the kind of spec advise
+	// parks. Any project that can hand us a token gets the map.
+	const ctx = repo ? await getRepoContext(repo) : null;
+	const user = [
+		ctx?.moduleMap ? `REPO MAP (${repo?.repo})\n${ctx.moduleMap}` : "",
+		ctx?.conventions ? `HOUSE RULES\n${ctx.conventions}` : "",
+		`Idea: ${trimmed}`,
+	]
+		.filter(Boolean)
+		.join("\n\n");
+
 	const result = await freeComplete({
 		system: GROOM_SYSTEM,
-		user: `Idea: ${trimmed}`,
+		user,
 		temperature: 0.2,
-		maxTokens: 1200,
+		// The map and rules go in, so the budget has to cover a spec that names
+		// real paths rather than one that hand-waves.
+		maxTokens: 1600,
 		teamId,
 	});
 
