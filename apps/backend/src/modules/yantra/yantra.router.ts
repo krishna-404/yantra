@@ -583,7 +583,15 @@ const approveSpecRoute = rpcSuperAdminProcedure
 			tier: z.enum(["T0", "T1", "T2", "T3"]),
 		}),
 	)
-	.output(z.object({ issue: z.number(), url: z.string() }))
+	.output(
+		z.object({
+			issue: z.number(),
+			url: z.string(),
+			// Re-approving an already-open spec returns it instead of filing a
+			// twin; the caller needs to know which happened.
+			alreadyExisted: z.boolean(),
+		}),
+	)
 	.handler(async ({ input }) => {
 		const project = await db.yantraProjects
 			.findBy({ id: input.projectId })

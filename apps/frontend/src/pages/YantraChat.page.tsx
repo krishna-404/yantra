@@ -35,7 +35,11 @@ type Msg = { id: number } & (
 	| { role: "user"; text: string }
 	// `queued` rides on the draft rather than arriving as its own bubble: once a
 	// spec is filed, the card that offered to file it has to stop offering.
-	| { role: "draft"; draft: Draft; queued?: { issue: number; url: string } }
+	| {
+			role: "draft";
+			draft: Draft;
+			queued?: { issue: number; url: string; alreadyExisted?: boolean };
+	  }
 	| { role: "queued"; issue: number; url: string }
 );
 
@@ -261,7 +265,14 @@ function ChatPane({ project }: { project: YantraProject }) {
 				setMessages((m) =>
 					m.map((msg) =>
 						msg.id === msgId && msg.role === "draft"
-							? { ...msg, queued: { issue: res.issue, url: res.url } }
+							? {
+									...msg,
+									queued: {
+										issue: res.issue,
+										url: res.url,
+										alreadyExisted: res.alreadyExisted,
+									},
+								  }
 							: msg,
 					),
 				);
@@ -1175,7 +1186,7 @@ function Bubble({
 							spec:ready
 						</Typography>
 						<Typography variant="body2" sx={{ color: "text.secondary" }}>
-							· queued as
+							{msg.queued.alreadyExisted ? "· already open as" : "· queued as"}
 						</Typography>
 						<Typography
 							variant="body2"
