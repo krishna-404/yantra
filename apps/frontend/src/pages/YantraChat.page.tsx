@@ -33,7 +33,9 @@ interface Draft {
 
 type Msg = { id: number } & (
 	| { role: "user"; text: string }
-	| { role: "draft"; draft: Draft }
+	// `queued` rides on the draft rather than arriving as its own bubble: once a
+	// spec is filed, the card that offered to file it has to stop offering.
+	| { role: "draft"; draft: Draft; queued?: { issue: number; url: string } }
 	| { role: "queued"; issue: number; url: string }
 );
 
@@ -180,27 +182,42 @@ function ChatPane({ project }: { project: YantraProject }) {
 			.listMessages({ projectId: project.id })
 			.then((rows) => {
 				if (cancelled) return;
-				setMessages(
-					rows.map((r) => {
-						if (r.role === "draft") {
-							return {
-								id: nextMsgId(),
-								role: "draft" as const,
-								draft: r.payload as Draft,
-							};
+				// A stored `queued` row is the outcome OF a draft, not a separate
+				// turn — fold it back onto its draft (they share the spec title) so a
+				// reloaded thread looks exactly like the live one.
+				const out: Msg[] = [];
+				for (const r of rows) {
+					if (r.role === "draft") {
+						out.push({
+							id: nextMsgId(),
+							role: "draft",
+							draft: r.payload as Draft,
+						});
+						continue;
+					}
+					if (r.role === "queued") {
+						const p = (r.payload ?? {}) as { issue?: number; url?: string };
+						const queued = { issue: p.issue ?? 0, url: p.url ?? "" };
+						const target = [...out]
+							.reverse()
+							.find(
+								(m) =>
+									m.role === "draft" &&
+									!m.queued &&
+									m.draft.title === r.text,
+							);
+						if (target && target.role === "draft") {
+							target.queued = queued;
+						} else {
+							// Older threads (or a title edited before filing) keep the
+							// standalone receipt rather than losing the link entirely.
+							out.push({ id: nextMsgId(), role: "queued", ...queued });
 						}
-						if (r.role === "queued") {
-							const p = (r.payload ?? {}) as { issue?: number; url?: string };
-							return {
-								id: nextMsgId(),
-								role: "queued" as const,
-								issue: p.issue ?? 0,
-								url: p.url ?? "",
-							};
-						}
-						return { id: nextMsgId(), role: "user" as const, text: r.text };
-					}),
-				);
+						continue;
+					}
+					out.push({ id: nextMsgId(), role: "user", text: r.text });
+				}
+				setMessages(out);
 			})
 			.catch(() => {
 				// An unreadable thread shouldn't block composing a new message.
@@ -231,7 +248,7 @@ function ChatPane({ project }: { project: YantraProject }) {
 	}, [input, project.id]);
 
 	const queue = useCallback(
-		async (draft: Draft) => {
+		async (msgId: number, draft: Draft) => {
 			setBusy(true);
 			setError(null);
 			try {
@@ -241,10 +258,13 @@ function ChatPane({ project }: { project: YantraProject }) {
 					body: draft.body,
 					tier: draft.tier as "T0" | "T1" | "T2" | "T3",
 				});
-				setMessages((m) => [
-					...m,
-					{ id: nextMsgId(), role: "queued", issue: res.issue, url: res.url },
-				]);
+				setMessages((m) =>
+					m.map((msg) =>
+						msg.id === msgId && msg.role === "draft"
+							? { ...msg, queued: { issue: res.issue, url: res.url } }
+							: msg,
+					),
+				);
 			} catch (e) {
 				setError(e instanceof Error ? e.message : "Couldn't queue the spec");
 			} finally {
@@ -1078,12 +1098,24 @@ function Bubble({
 }: {
 	msg: Msg;
 	busy: boolean;
-	onQueue: (d: Draft) => void;
+	onQueue: (msgId: number, d: Draft) => void;
 }) {
 	if (msg.role === "user") {
 		return (
 			<Box sx={{ alignSelf: "flex-end", maxWidth: "85%" }}>
-				<Card sx={{ p: 1.5, bgcolor: "primary.main", color: "primary.contrastText" }}>
+				{/* Claude doesn't fill your own messages with the brand accent, and
+				    for good reason: text on the accent measures 4.60:1 dark and
+				    3.90:1 light, so the thing you just typed is the least readable
+				    text on the page. A neutral raised surface reads at 12.67:1 and
+				    still says "this one is mine". */}
+				<Card
+					sx={{
+						p: 1.5,
+						bgcolor: (t) =>
+							t.palette.mode === "dark" ? "#2e2b28" : "#eceae4",
+						border: "none",
+					}}
+				>
 					<Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
 						{msg.text}
 					</Typography>
@@ -1125,15 +1157,48 @@ function Bubble({
 				>
 					{d.body}
 				</Typography>
-				<Button
-					variant="contained"
-					size="small"
-					sx={{ mt: 1.5, textTransform: "none" }}
-					disabled={busy}
-					onClick={() => onQueue(d)}
-				>
-					Queue as spec:ready
-				</Button>
+				{msg.queued ? (
+					// Filed. The action is spent, so the affordance goes away and its
+					// place is taken by where the work now lives.
+					<Stack
+						direction="row"
+						spacing={1}
+						alignItems="center"
+						sx={{
+							mt: 1.5,
+							pt: 1.5,
+							borderTop: "1px solid",
+							borderColor: "divider",
+						}}
+					>
+						<Typography variant="body2" sx={{ color: "success.main", fontWeight: 600 }}>
+							spec:ready
+						</Typography>
+						<Typography variant="body2" sx={{ color: "text.secondary" }}>
+							· queued as
+						</Typography>
+						<Typography
+							variant="body2"
+							component="a"
+							href={msg.queued.url}
+							target="_blank"
+							rel="noreferrer"
+							sx={{ color: "primary.main", fontWeight: 600 }}
+						>
+							#{msg.queued.issue}
+						</Typography>
+					</Stack>
+				) : (
+					<Button
+						variant="contained"
+						size="small"
+						sx={{ mt: 1.5, textTransform: "none" }}
+						disabled={busy}
+						onClick={() => onQueue(msg.id, d)}
+					>
+						Queue as spec:ready
+					</Button>
+				)}
 			</Card>
 		</Box>
 	);
