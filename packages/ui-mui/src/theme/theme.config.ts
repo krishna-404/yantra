@@ -1,5 +1,5 @@
 import type { PaletteMode } from "@mui/material";
-import { createTheme } from "@mui/material/styles";
+import { createTheme, type Theme } from "@mui/material/styles";
 import "./theme.types"; // Import type augmentations
 
 /**
@@ -79,10 +79,70 @@ const baseThemeConfig = {
 				size: "small" as const,
 			},
 		},
+		MuiInputBase: {
+			styleOverrides: {
+				// MUI paints placeholders as primary text at opacity 0.42, which
+				// measures 3.73:1 on dark and 2.59:1 on light — both below the 4.5:1
+				// floor for body text. A placeholder is the only instruction an empty
+				// field gives, so it has to be as readable as any other caption:
+				// secondary text at full strength, 6.55:1.
+				input: ({ theme }: { theme: Theme }) => ({
+					"&::placeholder": {
+						color: theme.palette.text.secondary,
+						opacity: 1,
+					},
+				}),
+			},
+		},
 		MuiOutlinedInput: {
 			styleOverrides: {
-				root: { borderRadius: 10 },
+				root: {
+					borderRadius: 10,
+					// Claude's inputs read as a quiet surface, not a boxed control:
+					// a hairline that only firms up on hover, and a single accent
+					// ring on focus rather than a heavier double border.
+					"& .MuiOutlinedInput-notchedOutline": {
+						borderColor: "rgba(128,128,128,0.32)",
+						transition: "border-color 0.12s ease",
+					},
+					"&:hover .MuiOutlinedInput-notchedOutline": {
+						borderColor: "rgba(128,128,128,0.52)",
+					},
+					"&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+						borderWidth: 1,
+						borderColor: ACCENT,
+					},
+				},
+				input: {
+					// Roomier than MUI's default — Claude's fields breathe.
+					paddingTop: 11,
+					paddingBottom: 11,
+				},
 			},
+		},
+		MuiInputLabel: {
+			styleOverrides: {
+				root: {
+					fontSize: "0.875rem",
+					"&.Mui-focused": { color: "inherit" },
+				},
+			},
+		},
+		MuiFormHelperText: {
+			styleOverrides: {
+				// Helper text is guidance, not chrome — pull it in and calm it down.
+				root: { marginLeft: 2, marginTop: 6, lineHeight: 1.45 },
+			},
+		},
+		MuiSwitch: {
+			styleOverrides: {
+				// MUI's default switch is chunky and very Material. Slimmer track,
+				// smaller thumb, no ripple halo — closer to what Claude ships.
+				root: { padding: 8 },
+				track: { borderRadius: 11, opacity: 0.38 },
+				thumb: { boxShadow: "0 1px 2px rgba(0,0,0,0.28)" },
+			},
+			defaultProps: { disableRipple: true },
 		},
 		MuiPaper: {
 			// Kill MUI's dark-mode elevation overlay so surfaces are true-color.
@@ -92,7 +152,7 @@ const baseThemeConfig = {
 			styleOverrides: {
 				root: {
 					borderRadius: 14,
-					border: "1px solid rgba(128,128,128,0.18)",
+					border: "1px solid rgba(128,128,128,0.22)",
 					boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.05)",
 					backgroundImage: "none",
 				},
@@ -165,13 +225,19 @@ export const createAppTheme = (mode: PaletteMode = "light") => {
 						},
 						text: {
 							primary: "#1f1e1d",
-							secondary: "#6b6760",
-							disabled: "#a7a29b",
+							secondary: "#6b6760", // 5.62:1 on paper, 5.06:1 on default
+							// Was #a7a29b — 2.53:1, unreadable on a disabled Send button
+							// or a locked field. 3.43:1 still reads as "off" without
+							// vanishing.
+							disabled: "#8f8a83",
 						},
-						divider: "rgba(31, 30, 29, 0.09)",
+						// A hairline at 0.09 measures 1.19:1 and effectively disappears,
+						// which matters now that settings are sectioned by rules rather
+						// than boxed in Cards.
+						divider: "rgba(31, 30, 29, 0.12)",
 						action: {
-							hover: "rgba(31, 30, 29, 0.04)",
-							selected: "rgba(201, 100, 66, 0.10)",
+							hover: "rgba(31, 30, 29, 0.05)",
+							selected: "rgba(201, 100, 66, 0.12)",
 						},
 				  }
 				: {
@@ -219,14 +285,21 @@ export const createAppTheme = (mode: PaletteMode = "light") => {
 							paper: "#211f1d",
 						},
 						text: {
-							primary: "#f4f3ef",
-							secondary: "#9b968e",
-							disabled: "#6b6760",
+							primary: "#f4f3ef", // 14.79:1
+							// Was #9b968e (5.59:1). Technically AA, but this carries the
+							// project subtitles, section captions and tab labels at 12–13px,
+							// where 5.6:1 reads as greyed-out rather than secondary.
+							// 6.55:1 on paper, 7.07:1 on the app background.
+							secondary: "#a8a39a",
+							// Was #6b6760 — 2.92:1, below even the large-text floor.
+							disabled: "#7d786f",
 						},
-						divider: "rgba(255, 255, 255, 0.08)",
+						// 0.08 measures 1.27:1 against the paper: not a faint rule, an
+						// absent one. 0.14 is visible without becoming a box.
+						divider: "rgba(255, 255, 255, 0.14)",
 						action: {
-							hover: "rgba(255, 255, 255, 0.05)",
-							selected: "rgba(217, 119, 87, 0.14)",
+							hover: "rgba(255, 255, 255, 0.07)",
+							selected: "rgba(217, 119, 87, 0.18)",
 						},
 				  }),
 		},
