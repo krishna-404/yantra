@@ -15,6 +15,29 @@ import { z } from "zod";
 // Phase 1: Basic health check and testing endpoints
 // Modules will be added in later phases
 
+/**
+ * Which build is actually serving this process.
+ *
+ * Three rounds of "the fix didn't work" turned out to be "the fix was never
+ * deployed", and there was no way to tell the two apart from outside: the only
+ * evidence available was inferring backend behaviour from the shape of a
+ * groomed issue body. A deployment you cannot identify is a deployment you
+ * cannot debug.
+ *
+ * Read at import time, not per request — the value cannot change without a
+ * restart. Coolify exposes SOURCE_COMMIT; the others cover Railway, Render and
+ * a plain `docker build --build-arg`.
+ */
+const BUILD_COMMIT =
+	process.env.SOURCE_COMMIT ??
+	process.env.GIT_COMMIT_SHA ??
+	process.env.RAILWAY_GIT_COMMIT_SHA ??
+	process.env.RENDER_GIT_COMMIT ??
+	"unknown";
+
+/** When this process booted — distinguishes "redeployed" from "still warm". */
+const STARTED_AT = new Date().toISOString();
+
 // Health check endpoint
 const healthCheck = rpcPublicProcedure
 	.route({ method: "GET", tags: ["Health Check"] })
@@ -24,6 +47,10 @@ const healthCheck = rpcPublicProcedure
 			timestamp: z.string(),
 			phase: z.number(),
 			message: z.string(),
+			/** Short SHA of the deployed build, or "unknown" if unset. */
+			commit: z.string(),
+			/** Process boot time, so a stale container is obvious. */
+			startedAt: z.string(),
 		}),
 	)
 	.handler(async () => {
@@ -32,6 +59,8 @@ const healthCheck = rpcPublicProcedure
 			timestamp: new Date().toISOString(),
 			phase: 1,
 			message: "Phase 1: Core Infrastructure - oRPC server is running",
+			commit: BUILD_COMMIT.slice(0, 12),
+			startedAt: STARTED_AT,
 		};
 	});
 
