@@ -30,6 +30,24 @@ describe("dropContradictoryExclusions", () => {
 		expect(dropContradictoryExclusions(criteria, exclusions)).toEqual([]);
 	});
 
+	it("removes the #148 pair, which the first version of this guard missed", () => {
+		// #148 was groomed after the guard shipped and parked anyway. The #145
+		// test above passed only because that pair happened to repeat "questions"
+		// on both sides; here the criterion says "asking" and the exclusion says
+		// "questions", so the overlap fell to 0.60 and survived. Generic verbs
+		// ("implement") and boilerplate ("logic") were padding the denominator.
+		const criteria = [
+			"Messages asking about the repo are answered in-thread without creating a spec draft",
+			"Messages describing work to be done produce a draft spec",
+			"Lint, type-check, and tests pass",
+		];
+		const exclusions = [
+			"Implementing the logic for answering repo questions in-thread",
+		];
+
+		expect(dropContradictoryExclusions(criteria, exclusions)).toEqual([]);
+	});
+
 	it("keeps an exclusion that genuinely narrows scope", () => {
 		const criteria = [
 			"Classification is stored on the chat message row",

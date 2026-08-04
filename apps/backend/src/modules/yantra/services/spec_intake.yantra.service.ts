@@ -57,21 +57,26 @@ const isTier = (v: unknown): v is Tier =>
 	typeof v === "string" && (TIERS as readonly string[]).includes(v);
 
 /**
- * Crude suffix stripper, not a linguistics engine. It exists so "answering"
- * and "answered" compare equal — without it the exact #145 contradiction slips
- * through at 0.60 overlap, just under the bar.
+ * Crude suffix stripper, not a linguistics engine. It exists so "answering",
+ * "answered" and "answer" all compare equal — without it the #145 pair lands at
+ * 0.60 overlap, just under the bar. The trailing-"e" strip is what keeps "ing"
+ * forms aligned with their base: "creating" → "creat" would otherwise never
+ * match "create".
  */
 const stem = (w: string): string => {
-	if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
-	if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
-	if (w.length > 4 && w.endsWith("s") && !w.endsWith("ss"))
-		return w.slice(0, -1);
-	return w;
+	let s = w;
+	if (s.length > 5 && s.endsWith("ing")) s = s.slice(0, -3);
+	else if (s.length > 4 && s.endsWith("ed")) s = s.slice(0, -2);
+	else if (s.length > 4 && s.endsWith("s") && !s.endsWith("ss"))
+		s = s.slice(0, -1);
+	if (s.length > 4 && s.endsWith("e")) s = s.slice(0, -1);
+	return s;
 };
 
 /** Stemmed. Words too common to mean two lines are about the same thing. */
 const STOPWORDS = new Set(
 	[
+		// Grammar.
 		"the",
 		"and",
 		"for",
@@ -97,9 +102,9 @@ const STOPWORDS = new Set(
 		"each",
 		"per",
 		"via",
+		// Spec boilerplate — every criterion carries these.
 		"use",
 		"using",
-		"add",
 		"pass",
 		"test",
 		"lint",
@@ -107,6 +112,25 @@ const STOPWORDS = new Set(
 		"code",
 		"logic",
 		"yarn",
+		// Generic implementation verbs. These are the important ones: "implementing
+		// X" and "X" name the same behaviour, so counting the verb as a distinctive
+		// word makes a real contradiction look like a partial match. #148 excluded
+		// "Implementing the logic for answering repo questions" against a criterion
+		// requiring exactly that, and scored 0.60 purely because "implement" and
+		// "logic" padded the denominator.
+		"add",
+		"implement",
+		"create",
+		"modify",
+		"integrate",
+		"support",
+		"handle",
+		"build",
+		"change",
+		"update",
+		"provide",
+		"ensure",
+		"introduce",
 	].map(stem),
 );
 
