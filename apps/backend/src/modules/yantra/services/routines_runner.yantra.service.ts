@@ -1,4 +1,6 @@
 import { db } from "@backend/db/db";
+import { yantraRoutineRunTaskDef } from "@backend/events/events.schema";
+import { tbus } from "@backend/events/tbus";
 import { gh } from "@backend/modules/yantra/services/gh_client.yantra.service";
 import { openSecret } from "@backend/modules/yantra/services/secret_box.yantra.service";
 import {
@@ -109,16 +111,33 @@ export const runRoutine = async (routine: RoutineRow): Promise<string> => {
 };
 
 /**
- * Moves the schedule forward. Called by the sweep at DISPATCH time, not after
- * the run: the routine must stop being "due" the moment it's queued, or the
- * next tick five minutes later queues it again. A failed run therefore still
- * advances the clock — its retry is the next cron boundary, which is what
- * keeps a permanently-broken routine from spinning every tick.
+ * Only self-enqueue runs due inside this window. Beyond it the five-minute
+ * sweep picks the routine up instead — a monthly schedule should not sit in the
+ * task queue as a row for a month waiting to be noticed.
+ */
+const SELF_ENQUEUE_HORIZON_MS = 60 * 60 * 1000;
+
+/**
+ * How early a firing may still count as "due". A self-enqueued task lands at
+ * its scheduled second, so without a little slack clock jitter could make it
+ * arrive a hair early, fail the due check, and silently skip the run.
+ */
+const DUE_SLACK_MS = 30 * 1000;
+
+/**
+ * Moves the schedule forward and returns the new `nextRunAt`.
+ *
+ * Called by the RUN, before the work starts — not by the sweep. That ordering
+ * is what makes a duplicate dispatch harmless: whoever gets there first moves
+ * the clock, and the loser sees a schedule already in the future and stops.
+ * It also means a failure inside the run still leaves the clock advanced, so a
+ * permanently-broken routine retries at its next boundary rather than every
+ * tick.
  */
 export const advanceSchedule = async (routine: {
 	id: string;
 	cron: string | null;
-}): Promise<void> => {
+}): Promise<number> => {
 	const now = new Date();
 	let next: Date | null = null;
 	if (routine.cron) {
@@ -131,16 +150,62 @@ export const advanceSchedule = async (routine: {
 			);
 		}
 	}
-	await db.yantraRoutines.findBy({ id: routine.id }).update({
-		nextRunAt: (next ?? new Date(now.getTime() + FALLBACK_DELAY_MS)).getTime(),
-	});
+	const at = (next ?? new Date(now.getTime() + FALLBACK_DELAY_MS)).getTime();
+	await db.yantraRoutines.findBy({ id: routine.id }).update({ nextRunAt: at });
+	return at;
 };
 
 /**
- * The task-side entry point (#140): load the routine, run it, and stamp when it
- * actually ran. `lastRunAt` is written here rather than at dispatch so it means
- * "last executed" — if the queue is backed up, the UI shouldn't claim a run
- * that hasn't happened yet.
+ * Queue the next firing to land on its scheduled minute rather than whenever
+ * the sweep next happens to look. Without this a "daily at 03:00" routine fires
+ * somewhere in 03:00–03:05, which is fine for a backlog top-up and wrong for
+ * anything a person is watching the clock for.
+ *
+ * Best-effort by design: the sweep remains the safety net, so a failed enqueue
+ * costs punctuality, never the run.
+ */
+export const scheduleNextRun = async (
+	routineId: string,
+	at: number,
+): Promise<boolean> => {
+	const delayMs = at - Date.now();
+	if (delayMs > SELF_ENQUEUE_HORIZON_MS) return false;
+
+	try {
+		await tbus.send(
+			yantraRoutineRunTaskDef.from(
+				{ routineId },
+				{
+					// Ceil, never floor: landing a second early would fail the due
+					// check and skip the cycle entirely.
+					startAfterSeconds: Math.max(0, Math.ceil(delayMs / 1000)),
+					singletonKey: routineId,
+				},
+			),
+		);
+		return true;
+	} catch (err) {
+		logger.warn(
+			{ err, routine: routineId },
+			"routine: self-enqueue failed — the sweep will pick it up",
+		);
+		return false;
+	}
+};
+
+/**
+ * The task-side entry point (#140): claim the slot by advancing the schedule,
+ * queue the next firing, then do the work.
+ *
+ * Advancing first is the idempotence guard. The sweep and a self-enqueued task
+ * can both target the same firing; whichever runs first moves `nextRunAt` into
+ * the future, and the other sees it and returns `not_due` without grooming
+ * anything. That holds regardless of how the queue's singleton semantics treat
+ * a delayed task, which is the point — correctness shouldn't rest on it.
+ *
+ * `lastRunAt` is stamped after the work, not at dispatch, so it means "last
+ * executed": a backed-up queue must never let the UI claim a run that hasn't
+ * happened.
  */
 export const runRoutineById = async (routineId: string): Promise<string> => {
 	const routine = await db.yantraRoutines
@@ -155,11 +220,22 @@ export const runRoutineById = async (routineId: string): Promise<string> => {
 			"prompt",
 			"targetReady",
 			"enabled",
+			"nextRunAt",
 		)
 		.takeOptional();
 	if (!routine) return "routine_deleted";
 	// Disabled between dispatch and execution — honour the newer intent.
 	if (!routine.enabled) return "routine_disabled";
+
+	if (
+		routine.nextRunAt !== null &&
+		routine.nextRunAt > Date.now() + DUE_SLACK_MS
+	) {
+		return "not_due";
+	}
+
+	const at = await advanceSchedule(routine);
+	await scheduleNextRun(routine.id, at);
 
 	try {
 		return await runRoutine(routine);

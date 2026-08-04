@@ -1,7 +1,6 @@
 import { db } from "@backend/db/db";
 import { yantraRoutineRunTaskDef } from "@backend/events/events.schema";
 import { tbus } from "@backend/events/tbus";
-import { advanceSchedule } from "@backend/modules/yantra/services/routines_runner.yantra.service";
 import { logger } from "@backend/utils/logger.utils";
 import cron, { type ScheduledTask } from "node-cron";
 
@@ -52,15 +51,6 @@ export async function yantraRoutinesOnce(): Promise<void> {
 			if (due.length === 0) return;
 
 			for (const routine of due) {
-				// Advance FIRST: the routine has to stop being due the moment it is
-				// queued, or the next sweep queues it again. If the enqueue then
-				// fails, the cost is one skipped cycle, not a duplicate run.
-				await advanceSchedule(routine).catch((err) =>
-					logger.error(
-						{ err, routine: routine.id },
-						"routine reschedule failed",
-					),
-				);
 				try {
 					await tbus.send(
 						yantraRoutineRunTaskDef.from(
