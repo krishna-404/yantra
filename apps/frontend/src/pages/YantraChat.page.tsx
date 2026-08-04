@@ -1103,7 +1103,19 @@ function Bubble({
 	if (msg.role === "user") {
 		return (
 			<Box sx={{ alignSelf: "flex-end", maxWidth: "85%" }}>
-				<Card sx={{ p: 1.5, bgcolor: "primary.main", color: "primary.contrastText" }}>
+				{/* Claude doesn't fill your own messages with the brand accent, and
+				    for good reason: text on the accent measures 4.60:1 dark and
+				    3.90:1 light, so the thing you just typed is the least readable
+				    text on the page. A neutral raised surface reads at 12.67:1 and
+				    still says "this one is mine". */}
+				<Card
+					sx={{
+						p: 1.5,
+						bgcolor: (t) =>
+							t.palette.mode === "dark" ? "#2e2b28" : "#eceae4",
+						border: "none",
+					}}
+				>
 					<Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
 						{msg.text}
 					</Typography>
