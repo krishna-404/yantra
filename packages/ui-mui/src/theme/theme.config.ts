@@ -81,8 +81,53 @@ const baseThemeConfig = {
 		},
 		MuiOutlinedInput: {
 			styleOverrides: {
-				root: { borderRadius: 10 },
+				root: {
+					borderRadius: 10,
+					// Claude's inputs read as a quiet surface, not a boxed control:
+					// a hairline that only firms up on hover, and a single accent
+					// ring on focus rather than a heavier double border.
+					"& .MuiOutlinedInput-notchedOutline": {
+						borderColor: "rgba(128,128,128,0.24)",
+						transition: "border-color 0.12s ease",
+					},
+					"&:hover .MuiOutlinedInput-notchedOutline": {
+						borderColor: "rgba(128,128,128,0.42)",
+					},
+					"&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+						borderWidth: 1,
+						borderColor: ACCENT,
+					},
+				},
+				input: {
+					// Roomier than MUI's default — Claude's fields breathe.
+					paddingTop: 11,
+					paddingBottom: 11,
+				},
 			},
+		},
+		MuiInputLabel: {
+			styleOverrides: {
+				root: {
+					fontSize: "0.875rem",
+					"&.Mui-focused": { color: "inherit" },
+				},
+			},
+		},
+		MuiFormHelperText: {
+			styleOverrides: {
+				// Helper text is guidance, not chrome — pull it in and calm it down.
+				root: { marginLeft: 2, marginTop: 6, lineHeight: 1.45 },
+			},
+		},
+		MuiSwitch: {
+			styleOverrides: {
+				// MUI's default switch is chunky and very Material. Slimmer track,
+				// smaller thumb, no ripple halo — closer to what Claude ships.
+				root: { padding: 8 },
+				track: { borderRadius: 11, opacity: 0.28 },
+				thumb: { boxShadow: "0 1px 2px rgba(0,0,0,0.28)" },
+			},
+			defaultProps: { disableRipple: true },
 		},
 		MuiPaper: {
 			// Kill MUI's dark-mode elevation overlay so surfaces are true-color.

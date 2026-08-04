@@ -12,7 +12,6 @@ import {
 import { orpcFetch } from "@frontend/utils/orpc.client";
 import {
 	CircularProgress,
-	FormControlLabel,
 	MenuItem,
 	Switch,
 	TextField,
@@ -83,22 +82,29 @@ export default function YantraChatPage() {
 
 	return (
 		<Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+			{/* Header: the repo, what it promotes to, and the tabs. Claude keeps
+			    chrome quiet — a hairline rule, a text tab that underlines when
+			    active, no filled pills competing with the content. */}
 			<Stack
 				direction="row"
-				spacing={1}
-				alignItems="center"
+				spacing={2}
+				alignItems="flex-end"
 				useFlexGap
 				sx={{
-					px: { xs: 2, md: 3 },
-					py: 1.5,
+					px: { xs: 2.5, md: 5 },
+					pt: 2,
 					borderBottom: "1px solid",
 					borderColor: "divider",
 					flexWrap: "wrap",
-					rowGap: 1,
+					rowGap: 0.5,
 				}}
 			>
-				<Box sx={{ flex: "1 1 180px", minWidth: 0 }}>
-					<Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+				<Box sx={{ flex: "1 1 220px", minWidth: 0, pb: 1.5 }}>
+					<Typography
+						variant="subtitle1"
+						sx={{ fontWeight: 700, letterSpacing: "-0.01em" }}
+						noWrap
+					>
 						{selected.repo}
 					</Typography>
 					<Typography variant="caption" sx={{ color: "text.secondary" }}>
@@ -107,35 +113,41 @@ export default function YantraChatPage() {
 						{selected.autoMergeToMain ? " · auto-promote" : ""}
 					</Typography>
 				</Box>
-				<Box
-					sx={{
-						display: "inline-flex",
-						gap: 0.5,
-						p: 0.5,
-						borderRadius: 2.5,
-						bgcolor: "action.hover",
-						maxWidth: "100%",
-						overflowX: "auto",
-					}}
+				<Stack
+					direction="row"
+					spacing={0.5}
+					sx={{ maxWidth: "100%", overflowX: "auto" }}
 				>
 					{TABS.map(([t, label]) => (
-						<Button
+						<Box
 							key={t}
-							size="small"
-							disableElevation
-							variant={tab === t ? "contained" : "text"}
+							component="button"
+							type="button"
 							onClick={() => setTab(t)}
 							sx={{
-								borderRadius: 2,
+								border: "none",
+								background: "none",
+								cursor: "pointer",
+								px: 1.5,
+								pb: 1.25,
+								pt: 0.5,
 								flexShrink: 0,
-								minWidth: { xs: 68, sm: 82 },
-								color: tab === t ? undefined : "text.secondary",
+								fontSize: "0.875rem",
+								fontWeight: tab === t ? 700 : 500,
+								color: tab === t ? "text.primary" : "text.secondary",
+								// Sits ON the header rule, so the active tab reads as
+								// continuous with the pane below it.
+								borderBottom: "2px solid",
+								borderColor: tab === t ? "primary.main" : "transparent",
+								marginBottom: "-1px",
+								transition: "color 0.12s ease",
+								"&:hover": { color: "text.primary" },
 							}}
 						>
 							{label}
-						</Button>
+						</Box>
 					))}
-				</Box>
+				</Stack>
 			</Stack>
 
 			<Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -792,6 +804,107 @@ function Stat({ label, value }: { label: string; value: number }) {
 	);
 }
 
+/**
+ * Settings layout primitives, deliberately un-Material.
+ *
+ * MUI's default form is a stack of boxed controls with floating notch labels;
+ * Claude's is a document — titled sections, a one-line explanation of what the
+ * section is for, and quiet fields underneath. These three keep that shape in
+ * one place so every settings surface reads the same.
+ */
+function Section({
+	title,
+	hint,
+	children,
+}: {
+	title: string;
+	hint?: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<Box
+			sx={{
+				py: 3,
+				borderBottom: "1px solid",
+				borderColor: "divider",
+				"&:last-of-type": { borderBottom: "none" },
+			}}
+		>
+			<Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+				{title}
+			</Typography>
+			{hint && (
+				<Typography
+					variant="body2"
+					sx={{ color: "text.secondary", mt: 0.5, maxWidth: 520 }}
+				>
+					{hint}
+				</Typography>
+			)}
+			<Stack spacing={2.5} sx={{ mt: 2.5 }}>
+				{children}
+			</Stack>
+		</Box>
+	);
+}
+
+function Field({
+	label,
+	optional,
+	children,
+}: {
+	label: string;
+	optional?: boolean;
+	children: React.ReactNode;
+}) {
+	return (
+		<Box>
+			<Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mb: 0.75 }}>
+				<Typography variant="body2" sx={{ fontWeight: 600 }}>
+					{label}
+				</Typography>
+				{optional && (
+					<Typography variant="caption" sx={{ color: "text.secondary" }}>
+						optional
+					</Typography>
+				)}
+			</Stack>
+			{children}
+		</Box>
+	);
+}
+
+/** Label and explanation on the left, control on the right — never a bare switch. */
+function Toggle({
+	checked,
+	onChange,
+	label,
+	hint,
+}: {
+	checked: boolean;
+	onChange: (v: boolean) => void;
+	label: string;
+	hint: string;
+}) {
+	return (
+		<Stack direction="row" spacing={2} alignItems="flex-start">
+			<Box sx={{ flex: 1, minWidth: 0 }}>
+				<Typography variant="body2" sx={{ fontWeight: 600 }}>
+					{label}
+				</Typography>
+				<Typography variant="caption" sx={{ color: "text.secondary" }}>
+					{hint}
+				</Typography>
+			</Box>
+			<Switch
+				checked={checked}
+				onChange={(e) => onChange(e.target.checked)}
+				sx={{ mt: -0.5 }}
+			/>
+		</Stack>
+	);
+}
+
 function SettingsPane({
 	project,
 	onSaved,
@@ -843,88 +956,117 @@ function SettingsPane({
 	};
 
 	return (
-		<Box sx={{ overflowY: "auto", px: { xs: 2, md: 3 }, py: 2 }}>
-			<Card sx={{ p: 2.5, maxWidth: 560 }}>
-				<Stack spacing={2}>
-					<TextField size="small" label="Repository" value={project.repo} disabled />
-					<Typography variant="overline" sx={{ color: "text.secondary" }}>
-						Production
-					</Typography>
-					<TextField
-						size="small"
-						label="Production branch"
-						value={productionBranch}
-						onChange={(e) => setProductionBranch(e.target.value)}
-						helperText="Where verified work ships. Feature branches are cut from here and PRs target it."
-					/>
-					<TextField
-						size="small"
-						label="Production URL"
-						placeholder="https://yantra.c4elabs.com"
-						value={productionUrl}
-						onChange={(e) => setProductionUrl(e.target.value)}
-					/>
+		<Box sx={{ overflowY: "auto", px: { xs: 2.5, md: 5 }, py: 3 }}>
+			<Stack spacing={0} sx={{ maxWidth: 620 }}>
+				<Section
+					title="Repository"
+					hint="The repo this project builds. Set once when the project is created."
+				>
+					<Field label="Repository">
+						<TextField value={project.repo} disabled fullWidth />
+					</Field>
+				</Section>
 
-					<Typography variant="overline" sx={{ color: "text.secondary" }}>
-						Staging
-					</Typography>
-					<TextField
-						size="small"
-						label="Staging branch"
-						value={baseBranch}
-						onChange={(e) => setBaseBranch(e.target.value)}
-						helperText="Every feature branch is force-pushed here to be checked before promotion."
-					/>
-					<TextField
-						size="small"
-						label="Staging URL"
-						placeholder="https://yantra-staging.c4elabs.com"
-						value={stagingUrl}
-						onChange={(e) => setStagingUrl(e.target.value)}
-					/>
+				<Section
+					title="Production"
+					hint="Where verified work ships. Feature branches are cut from here and PRs target it."
+				>
+					<Field label="Branch">
+						<TextField
+							value={productionBranch}
+							onChange={(e) => setProductionBranch(e.target.value)}
+							fullWidth
+						/>
+					</Field>
+					<Field label="URL" optional>
+						<TextField
+							placeholder="https://yantra.c4elabs.com"
+							value={productionUrl}
+							onChange={(e) => setProductionUrl(e.target.value)}
+							fullWidth
+						/>
+					</Field>
+				</Section>
 
-					<Divider />
-					<TextField
-						select
-						size="small"
-						label="Mode"
-						value={mode}
-						onChange={(e) => setMode(e.target.value)}
-						helperText="shadow = decide only · live = claim issues, open PRs"
-					>
-						<MenuItem value="shadow">shadow</MenuItem>
-						<MenuItem value="live">live</MenuItem>
-					</TextField>
-					<FormControlLabel
-						control={<Switch checked={autoMerge} onChange={(e) => setAutoMerge(e.target.checked)} />}
-						label="Auto-promote staging → production (unattended)"
+				<Section
+					title="Staging"
+					hint="Every feature branch is force-pushed here to be checked before promotion."
+				>
+					<Field label="Branch">
+						<TextField
+							value={baseBranch}
+							onChange={(e) => setBaseBranch(e.target.value)}
+							fullWidth
+						/>
+					</Field>
+					<Field label="URL" optional>
+						<TextField
+							placeholder="https://yantra-staging.c4elabs.com"
+							value={stagingUrl}
+							onChange={(e) => setStagingUrl(e.target.value)}
+							fullWidth
+						/>
+					</Field>
+				</Section>
+
+				<Section title="Autonomy" hint="How much the factory does without you.">
+					<Field label="Mode">
+						<TextField
+							select
+							value={mode}
+							onChange={(e) => setMode(e.target.value)}
+							fullWidth
+						>
+							<MenuItem value="shadow">
+								shadow — decide only, never writes
+							</MenuItem>
+							<MenuItem value="live">live — claim issues, open PRs</MenuItem>
+						</TextField>
+					</Field>
+					<Toggle
+						checked={autoMerge}
+						onChange={setAutoMerge}
+						label="Auto-promote to production"
+						hint="Merge passing PRs into the production branch unattended."
 					/>
-					<FormControlLabel
-						control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
-						label="Enabled (factory works this project)"
+					<Toggle
+						checked={enabled}
+						onChange={setEnabled}
+						label="Enabled"
+						hint="Off means the factory ignores this project entirely."
 					/>
-					<Divider />
-					<TextField
-						size="small"
-						type="password"
-						label="Rotate GitHub token"
-						placeholder={`current: …${project.ghTokenHint}`}
-						value={newToken}
-						onChange={(e) => setNewToken(e.target.value)}
-						helperText="Leave blank to keep the current token."
-					/>
+				</Section>
+
+				<Section
+					title="Credentials"
+					hint="Stored encrypted. Only the last four characters are ever shown."
+				>
+					<Field label="GitHub token">
+						<TextField
+							type="password"
+							placeholder={`current: ••••${project.ghTokenHint}`}
+							value={newToken}
+							onChange={(e) => setNewToken(e.target.value)}
+							helperText="Leave blank to keep the current token."
+							fullWidth
+						/>
+					</Field>
+				</Section>
+
+				<Stack spacing={1.5} sx={{ pt: 3 }}>
 					{msg && <Alert severity="success">{msg}</Alert>}
 					{err && <Alert severity="error">{err}</Alert>}
-					<Button
-						variant="contained"
-						disabled={busy}
-						onClick={() => void save()}
-						sx={{ textTransform: "none", alignSelf: "flex-start" }}
-					>
-						{busy ? "Saving…" : "Save settings"}
-					</Button>
+					<Box>
+						<Button
+							variant="contained"
+							disabled={busy}
+							onClick={() => void save()}
+						>
+							{busy ? "Saving…" : "Save changes"}
+						</Button>
+					</Box>
 				</Stack>
-			</Card>
+			</Stack>
 		</Box>
 	);
 }

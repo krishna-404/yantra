@@ -41,7 +41,10 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 				justifyContent="space-between"
 				sx={{ px: 2.5, py: 2 }}
 			>
-				<Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: "-0.02em" }}>
+				<Typography
+					variant="subtitle1"
+					sx={{ fontWeight: 700, letterSpacing: "-0.01em" }}
+				>
 					Yantra
 				</Typography>
 				<NovuInbox />
@@ -51,26 +54,33 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 			<Box sx={{ px: 2, pb: 1 }}>
 				<Button
 					fullWidth
-					variant="outlined"
+					variant="text"
 					onClick={() => setAdding(true)}
 					sx={{
 						justifyContent: "flex-start",
-						textTransform: "none",
 						borderRadius: 2,
-						color: "text.primary",
-						borderColor: "divider",
-						py: 1,
+						color: "primary.main",
+						fontWeight: 600,
+						py: 0.9,
+						px: 1.5,
+						"&:hover": { bgcolor: "action.hover" },
 					}}
 				>
-					+  New project
+					+&nbsp;&nbsp;New project
 				</Button>
 			</Box>
 
 			{/* Project list */}
 			<Box sx={{ px: 1.5, pt: 1, flex: 1, minHeight: 0, overflowY: "auto" }}>
 				<Typography
-					variant="overline"
-					sx={{ px: 1, color: "text.secondary", fontWeight: 700 }}
+					variant="caption"
+					sx={{
+						px: 1.5,
+						color: "text.secondary",
+						fontWeight: 600,
+						display: "block",
+						mb: 0.5,
+					}}
 				>
 					Projects
 				</Typography>
@@ -97,9 +107,11 @@ export function YantraSidebar({ onNavigate }: { onNavigate?: () => void }) {
 									cursor: "pointer",
 									borderRadius: 2,
 									px: 1.5,
-									py: 1,
+									py: 0.85,
 									bgcolor: active ? "action.selected" : "transparent",
-									"&:hover": { bgcolor: active ? "action.selected" : "action.hover" },
+									"&:hover": {
+										bgcolor: active ? "action.selected" : "action.hover",
+									},
 									transition: "background-color 0.12s ease",
 								}}
 							>
