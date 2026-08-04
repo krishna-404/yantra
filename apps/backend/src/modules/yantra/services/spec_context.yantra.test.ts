@@ -1,5 +1,8 @@
 import { buildModuleMap } from "@backend/modules/yantra/services/repo_context.yantra.service";
-import { dropContradictoryExclusions } from "@backend/modules/yantra/services/spec_intake.yantra.service";
+import {
+	dropContradictoryExclusions,
+	findDuplicateSpec,
+} from "@backend/modules/yantra/services/spec_intake.yantra.service";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -124,5 +127,51 @@ describe("buildModuleMap", () => {
 		]);
 
 		expect(map.split("\n")[0]).toBe("big/ — 3 files");
+	});
+});
+
+describe("findDuplicateSpec", () => {
+	const issue = (number: number, title: string, isPr = false) => ({
+		number,
+		title,
+		html_url: `https://github.com/o/r/issues/${number}`,
+		...(isPr ? { pull_request: {} } : {}),
+	});
+
+	it("finds an open issue with the same title", () => {
+		// The exact spec that reached GitHub four times in one afternoon.
+		const open = [
+			issue(150, "[Spec] Classify Project Chat Messages"),
+			issue(143, "[Spec] Something else"),
+		];
+
+		expect(
+			findDuplicateSpec(open, "[Spec] Classify Project Chat Messages")?.number,
+		).toBe(150);
+	});
+
+	it("ignores case and surrounding whitespace", () => {
+		const open = [issue(150, "  [Spec] Classify Project Chat Messages  ")];
+
+		expect(
+			findDuplicateSpec(open, "[spec] classify project chat messages")?.number,
+		).toBe(150);
+	});
+
+	it("never matches a pull request", () => {
+		// GitHub returns PRs from the issues endpoint; a PR named after its spec
+		// must not block the spec from being filed.
+		const open = [issue(149, "[Spec] Classify Project Chat Messages", true)];
+
+		expect(
+			findDuplicateSpec(open, "[Spec] Classify Project Chat Messages"),
+		).toBeNull();
+	});
+
+	it("returns null when nothing matches, so the spec gets filed", () => {
+		expect(
+			findDuplicateSpec([issue(1, "Other")], "[Spec] New work"),
+		).toBeNull();
+		expect(findDuplicateSpec([], "[Spec] New work")).toBeNull();
 	});
 });

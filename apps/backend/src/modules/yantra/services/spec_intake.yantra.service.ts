@@ -1,5 +1,8 @@
 import { freeComplete } from "@backend/modules/yantra/services/free_completion.yantra.service";
-import { ghRequest } from "@backend/modules/yantra/services/gh_client.yantra.service";
+import {
+	gh,
+	ghRequest,
+} from "@backend/modules/yantra/services/gh_client.yantra.service";
 import { getRepoContext } from "@backend/modules/yantra/services/repo_context.yantra.service";
 import { extractJsonBlock } from "@backend/modules/yantra/services/turn_shared.yantra.service";
 
@@ -292,12 +295,49 @@ export const groomIdea = async (
 export interface CreatedSpec {
 	issue: number;
 	url: string;
+	/** True when this returned an issue that already existed. */
+	alreadyExisted: boolean;
 }
+
+interface OpenIssue {
+	number: number;
+	title: string;
+	html_url: string;
+	pull_request?: unknown;
+}
+
+/**
+ * An open issue with the same title is the same spec, not a second one.
+ *
+ * A persisted chat thread keeps every draft card it ever produced, so the same
+ * groomed spec can be filed again by clicking an older card — "Classify Project
+ * Chat Messages" reached GitHub four times in one afternoon as #145, #148, #150
+ * and #151. Each duplicate is claimed and burns a full Opus advise turn before
+ * anyone notices, and parking one leaves the others queued behind it.
+ *
+ * Exact title match only, and only against open issues: a spec whose work is
+ * done and closed should be fileable again. Pure, so the rule is testable
+ * without the network.
+ */
+export const findDuplicateSpec = (
+	openIssues: OpenIssue[],
+	title: string,
+): OpenIssue | null => {
+	const wanted = title.trim().toLowerCase();
+	return (
+		openIssues.find(
+			(i) => !i.pull_request && i.title.trim().toLowerCase() === wanted,
+		) ?? null
+	);
+};
 
 /**
  * File an approved draft as a spec:ready issue. This is the human-in-the-loop
  * gate: only an explicit approve reaches here, and only here does the factory
  * gain a new claimable task.
+ *
+ * Idempotent by title: re-approving a spec that is already open returns the
+ * existing issue rather than filing a twin.
  */
 export const createReadySpec = async (input: {
 	repo: string;
@@ -306,6 +346,22 @@ export const createReadySpec = async (input: {
 	body: string;
 	tier: Tier;
 }): Promise<CreatedSpec> => {
+	// Best-effort: if the lookup fails we would rather file a possible duplicate
+	// than refuse to queue work at all.
+	const existing = await gh<OpenIssue[]>(
+		`/repos/${input.repo}/issues?state=open&per_page=100`,
+		input.ghToken,
+	)
+		.then((issues) => findDuplicateSpec(issues, input.title))
+		.catch(() => null);
+	if (existing) {
+		return {
+			issue: existing.number,
+			url: existing.html_url,
+			alreadyExisted: true,
+		};
+	}
+
 	const created = await ghRequest<{ number: number; html_url: string }>(
 		"POST",
 		`/repos/${input.repo}/issues`,
@@ -316,5 +372,9 @@ export const createReadySpec = async (input: {
 			labels: ["spec:ready", `tier:${input.tier}`],
 		},
 	);
-	return { issue: created.number, url: created.html_url };
+	return {
+		issue: created.number,
+		url: created.html_url,
+		alreadyExisted: false,
+	};
 };
